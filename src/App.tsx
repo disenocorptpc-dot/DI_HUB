@@ -6,6 +6,7 @@ type Item = {
   title: string;
   category: string;
   url: string;
+  description: string;
   content: string;
 };
 
@@ -67,6 +68,7 @@ export default function App() {
   const [formTitle, setFormTitle] = useState('');
   const [formCategory, setFormCategory] = useState('');
   const [formUrl, setFormUrl] = useState('');
+  const [formDescription, setFormDescription] = useState('');
   const [formContent, setFormContent] = useState('');
 
   const [appDetailModalOpen, setAppDetailModalOpen] = useState(false);
@@ -98,6 +100,7 @@ export default function App() {
         title: formTitle,
         category: formCategory || 'General',
         url: formUrl,
+        description: formDescription,
         content: formContent
       };
       const res = await fetch('/api/items', {
@@ -108,7 +111,7 @@ export default function App() {
       if(res.ok) {
         showToast("🚀 Aporte guardado exitosamente.", "bg-emerald-400");
         setAporteModalOpen(false);
-        setFormTitle(''); setFormCategory(''); setFormUrl(''); setFormContent('');
+        setFormTitle(''); setFormCategory(''); setFormUrl(''); setFormDescription(''); setFormContent('');
         fetchItems(); // refresh list
       } else {
         showToast("Error al guardar (¿Base de datos conectada?)", "bg-red-400");
@@ -263,7 +266,7 @@ export default function App() {
                             <div className="space-y-4">
                                 {prompts.map(prompt => (
                                     <div key={prompt.id} className="bg-surface-dark border border-primary/10 p-4 group hover:border-accent-antigravity/40 transition-all rounded-sm relative cursor-pointer" 
-                                        onClick={() => openPromptDetail(prompt.title, prompt.category, 'bg-accent-antigravity/10 text-accent-antigravity border-accent-antigravity/20', 'Prompt guardado dinámicamente.', prompt.content)}>
+                                        onClick={() => openPromptDetail(prompt.title, prompt.category, 'bg-accent-antigravity/10 text-accent-antigravity border-accent-antigravity/20', prompt.description || 'Sin descripción guardada.', prompt.content)}>
                                         <div className="flex justify-between items-start mb-2">
                                             <div className="flex items-center gap-2">
                                                 <span className="bg-accent-antigravity/10 text-accent-antigravity px-2 py-0.5 rounded text-[10px] font-bold tracking-wider border border-accent-antigravity/20 flex items-center gap-1">
@@ -432,12 +435,21 @@ export default function App() {
                                 </div>
                             )}
 
-                            {aporteType !== 'link' && (
+                            {(aporteType === 'webapp' || aporteType === 'prompt') && (
                                 <div>
                                     <label className="block text-xs font-label-sm text-slate-400 uppercase tracking-wider mb-2">
-                                        {aporteType === 'webapp' ? 'Descripción Corta' : 'Contenido del Prompt'}
+                                        Descripción Corta / ¿Qué hace?
                                     </label>
-                                    <textarea value={formContent} onChange={e=>setFormContent(e.target.value)} className="w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors h-24 resize-none font-mono" placeholder="Escribe aquí..."></textarea>
+                                    <textarea value={formDescription} onChange={e=>setFormDescription(e.target.value)} className={`w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors ${aporteType === 'webapp' ? 'h-24' : 'h-16'} resize-none`} placeholder="Escribe aquí de qué trata..."></textarea>
+                                </div>
+                            )}
+
+                            {aporteType === 'prompt' && (
+                                <div>
+                                    <label className="block text-xs font-label-sm text-slate-400 uppercase tracking-wider mb-2">
+                                        Contenido del Prompt
+                                    </label>
+                                    <textarea value={formContent} onChange={e=>setFormContent(e.target.value)} className="w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors h-32 resize-none font-mono" placeholder="Actúa como un experto..."></textarea>
                                 </div>
                             )}
                         </div>
