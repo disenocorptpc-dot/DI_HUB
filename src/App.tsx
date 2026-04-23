@@ -1,9 +1,39 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+type Item = {
+  id: number;
+  type: 'webapp' | 'prompt' | 'link';
+  title: string;
+  category: string;
+  url: string;
+  content: string;
+};
 
 export default function App() {
   const [toastMessage, setToastMessage] = useState('');
   const [toastColor, setToastColor] = useState('bg-primary');
   const [isToastVisible, setIsToastVisible] = useState(false);
+
+  const [items, setItems] = useState<Item[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchItems();
+  }, []);
+
+  const fetchItems = async () => {
+    try {
+      const res = await fetch('/api/items');
+      if (res.ok) {
+        const data = await res.json();
+        setItems(data);
+      }
+    } catch (e) {
+      console.error("Error fetching items", e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const showToast = (message: string, colorClass = "bg-primary") => {
     setToastMessage(message);
@@ -32,6 +62,12 @@ export default function App() {
   // Modals state
   const [aporteModalOpen, setAporteModalOpen] = useState(false);
   const [aporteType, setAporteType] = useState<'webapp' | 'prompt' | 'link'>('webapp');
+  
+  // Form State
+  const [formTitle, setFormTitle] = useState('');
+  const [formCategory, setFormCategory] = useState('');
+  const [formUrl, setFormUrl] = useState('');
+  const [formContent, setFormContent] = useState('');
 
   const [appDetailModalOpen, setAppDetailModalOpen] = useState(false);
   const [selectedApp, setSelectedApp] = useState({ title: '', user: '', pass: '' });
@@ -41,6 +77,7 @@ export default function App() {
 
   const openAppDetail = (e: React.MouseEvent, title: string, user: string, pass: string) => {
     e.stopPropagation();
+    e.preventDefault();
     setSelectedApp({ title, user, pass });
     setAppDetailModalOpen(true);
   };
@@ -49,6 +86,62 @@ export default function App() {
     setSelectedPrompt({ title, aiTarget, aiClass, description, content });
     setPromptDetailModalOpen(true);
   };
+
+  const saveAporte = async () => {
+    if(!formTitle) {
+      showToast("El título es obligatorio", "bg-red-400");
+      return;
+    }
+    try {
+      const payload = {
+        type: aporteType,
+        title: formTitle,
+        category: formCategory || 'General',
+        url: formUrl,
+        content: formContent
+      };
+      const res = await fetch('/api/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if(res.ok) {
+        showToast("🚀 Aporte guardado exitosamente.", "bg-emerald-400");
+        setAporteModalOpen(false);
+        setFormTitle(''); setFormCategory(''); setFormUrl(''); setFormContent('');
+        fetchItems(); // refresh list
+      } else {
+        showToast("Error al guardar (¿Base de datos conectada?)", "bg-red-400");
+      }
+    } catch(e) {
+      showToast("Error de conexión con la base de datos", "bg-red-400");
+    }
+  };
+
+  const deleteItem = async (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if(window.confirm("¿Estás seguro de que deseas eliminar este aporte?")) {
+        try {
+            const res = await fetch(`/api/items/${id}`, { method: 'DELETE' });
+            if(res.ok) {
+              setItems(items.filter(item => item.id !== id));
+              showToast("🗑️ Aporte eliminado", "bg-slate-500");
+            }
+        } catch(e) {
+            showToast("Error al eliminar", "bg-red-500");
+        }
+    }
+  };
+
+  // Scroll to section smoothly
+  const scrollTo = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const webapps = items.filter(i => i.type === 'webapp');
+  const prompts = items.filter(i => i.type === 'prompt');
+  const links = items.filter(i => i.type === 'link');
 
   return (
     <div className="min-h-screen bg-surface-dark font-body-md text-slate-200 selection:bg-primary-container selection:text-surface-dark">
@@ -76,24 +169,24 @@ export default function App() {
       <aside className="hidden md:flex flex-col h-screen pt-20 pb-6 w-64 bg-surface border-r border-primary/10 fixed left-0 top-0 z-30">
           <nav className="flex-1 px-2 space-y-2 mt-4">
               <p className="px-4 text-[10px] uppercase tracking-widest text-slate-500 font-label-sm mb-2">Directorio</p>
-              <a className="flex items-center gap-3 bg-surface-dark text-primary-container border-l-2 border-primary-container px-4 py-2.5 transition-all text-sm font-medium" href="#">
+              <button onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})} className="w-full flex items-center gap-3 bg-surface-dark text-primary-container border-l-2 border-primary-container px-4 py-2.5 transition-all text-sm font-medium">
                   <span className="material-symbols-outlined">dashboard</span> <span>Dashboard</span>
-              </a>
-              <a className="flex items-center gap-3 text-slate-400 px-4 py-2.5 hover:bg-surface-dark/50 hover:text-primary transition-all text-sm" href="#webapps">
+              </button>
+              <button onClick={() => scrollTo('webapps')} className="w-full flex items-center gap-3 text-slate-400 px-4 py-2.5 hover:bg-surface-dark/50 hover:text-primary transition-all text-sm">
                   <span className="material-symbols-outlined">apps</span> <span>Web Apps & Tools</span>
-              </a>
-              <a className="flex items-center gap-3 text-slate-400 px-4 py-2.5 hover:bg-surface-dark/50 hover:text-primary transition-all text-sm" href="#prompts">
+              </button>
+              <button onClick={() => scrollTo('prompts')} className="w-full flex items-center gap-3 text-slate-400 px-4 py-2.5 hover:bg-surface-dark/50 hover:text-primary transition-all text-sm">
                   <span className="material-symbols-outlined">terminal</span> <span>Prompt Masters</span>
-              </a>
-              <a className="flex items-center gap-3 text-slate-400 px-4 py-2.5 hover:bg-surface-dark/50 hover:text-primary transition-all text-sm" href="#links">
+              </button>
+              <button onClick={() => scrollTo('links')} className="w-full flex items-center gap-3 text-slate-400 px-4 py-2.5 hover:bg-surface-dark/50 hover:text-primary transition-all text-sm">
                   <span className="material-symbols-outlined">folder_shared</span> <span>SharePoint & Links</span>
-              </a>
+              </button>
               
               <p className="px-4 text-[10px] uppercase tracking-widest text-slate-500 font-label-sm mt-8 mb-2">Colecciones</p>
-              <a className="flex items-center gap-3 text-slate-400 px-4 py-2.5 hover:bg-surface-dark/50 hover:text-yellow-400 transition-all text-sm" href="#">
+              <button className="w-full flex items-center gap-3 text-slate-400 px-4 py-2.5 hover:bg-surface-dark/50 hover:text-yellow-400 transition-all text-sm">
                   <span className="material-symbols-outlined">star</span>
                   <span>Mis Favoritos</span>
-              </a>
+              </button>
           </nav>
       </aside>
 
@@ -106,132 +199,124 @@ export default function App() {
                   <div className="h-1 w-12 bg-primary mt-4"></div>
               </div>
 
-              <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-                  
-                  {/* Left Column: Web Apps */}
-                  <div className="xl:col-span-7 space-y-8" id="webapps">
-                      <section className="bg-surface border border-primary/10 p-6 rounded-sm">
-                          <div className="flex justify-between items-center mb-6">
-                              <h3 className="text-xl font-headline-md text-primary flex items-center gap-2">
-                                  <span className="material-symbols-outlined">apps</span> Web Apps Internas
-                              </h3>
-                          </div>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {/* App Card 1 */}
-                              <div className="bg-surface-dark border border-primary/10 p-5 group hover:border-primary/40 hover:bg-primary/5 transition-all rounded-sm flex flex-col relative cursor-pointer" 
-                                   onClick={() => { window.open('#', '_blank'); showToast('Abriendo Yield Manager 3D...', 'bg-emerald-400'); }}>
-                                  <div className="absolute top-4 right-4 z-10 flex gap-2">
-                                      <button className="text-slate-600 hover:text-primary transition-colors" onClick={(e) => openAppDetail(e, 'Yield Manager 3D', 'admin@hub.corp', 'Y!eld45_Secure')} title="Ver Credenciales">
-                                          <span className="material-symbols-outlined text-xl">vpn_key</span>
-                                      </button>
-                                      <button className="text-slate-600 hover:text-yellow-400 transition-colors" onClick={toggleFavorite} title="Favorito">
-                                          <span className="material-symbols-outlined text-xl">star</span>
-                                      </button>
-                                  </div>
-                                  <div className="flex justify-between items-start mb-4">
-                                      <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
-                                          <span className="material-symbols-outlined">factory</span>
-                                      </div>
-                                      <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border border-emerald-500/20 mr-16">Producción</span>
-                                  </div>
-                                  <h4 className="text-lg text-white font-medium group-hover:text-primary transition-colors">Yield Manager 3D</h4>
-                                  
-                                  <div className="mt-4 border-t border-primary/10 pt-3 flex justify-between items-center opacity-70 group-hover:opacity-100 transition-opacity">
-                                      <span className="text-[10px] text-primary font-bold uppercase tracking-widest flex items-center gap-1">Lanzar App</span>
-                                      <span className="material-symbols-outlined text-primary text-sm">rocket_launch</span>
-                                  </div>
-                              </div>
-
-                              {/* App Card 2 */}
-                               <div className="bg-surface-dark border border-primary/10 p-5 group hover:border-primary/40 hover:bg-primary/5 transition-all rounded-sm flex flex-col relative cursor-pointer" 
-                                    onClick={() => { window.open('#', '_blank'); showToast('Abriendo Digital Signage...', 'bg-emerald-400'); }}>
-                                  <div className="absolute top-4 right-4 z-10 flex gap-2">
-                                      <button className="text-slate-600 hover:text-primary transition-colors" onClick={(e) => openAppDetail(e, 'Digital Signage', 'ventas@hub.corp', 'Retail_Screen2026')} title="Ver Credenciales">
-                                          <span className="material-symbols-outlined text-xl">vpn_key</span>
-                                      </button>
-                                      <button className="text-slate-600 hover:text-yellow-400 transition-colors favorite-active text-yellow-400" onClick={toggleFavorite} title="Favorito">
-                                          <span className="material-symbols-outlined text-xl">star</span>
-                                      </button>
-                                  </div>
-                                  <div className="flex justify-between items-start mb-4">
-                                      <div className="w-10 h-10 rounded bg-amber-500/10 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
-                                          <span className="material-symbols-outlined">smart_display</span>
-                                      </div>
-                                      <span className="bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border border-amber-500/20 mr-16">Retail</span>
-                                  </div>
-                                  <h4 className="text-lg text-white font-medium group-hover:text-primary transition-colors">Digital Signage</h4>
-                                  
-                                  <div className="mt-4 border-t border-primary/10 pt-3 flex justify-between items-center opacity-70 group-hover:opacity-100 transition-opacity">
-                                      <span className="text-[10px] text-primary font-bold uppercase tracking-widest flex items-center gap-1">Lanzar App</span>
-                                      <span className="material-symbols-outlined text-primary text-sm">rocket_launch</span>
-                                  </div>
-                              </div>
-                          </div>
-                      </section>
+              {isLoading ? (
+                  <div className="text-slate-400 animate-pulse flex items-center gap-2"><span className="material-symbols-outlined animate-spin">sync</span> Cargando base de datos...</div>
+              ) : items.length === 0 ? (
+                  <div className="p-10 border border-dashed border-primary/20 rounded text-center text-slate-500">
+                      <span className="material-symbols-outlined text-4xl mb-3 opacity-50">database</span>
+                      <p>La base de datos está vacía. ¡Agrega tu primer aporte!</p>
                   </div>
+              ) : (
+                <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+                    
+                    {/* Left Column: Web Apps */}
+                    <div className="xl:col-span-7 space-y-8" id="webapps">
+                        <section className="bg-surface border border-primary/10 p-6 rounded-sm">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-xl font-headline-md text-primary flex items-center gap-2">
+                                    <span className="material-symbols-outlined">apps</span> Web Apps Internas
+                                </h3>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {webapps.map(app => (
+                                    <div key={app.id} className="bg-surface-dark border border-primary/10 p-5 group hover:border-primary/40 hover:bg-primary/5 transition-all rounded-sm flex flex-col relative cursor-pointer" 
+                                        onClick={() => { window.open(app.url || '#', '_blank'); showToast(`Abriendo ${app.title}...`, 'bg-emerald-400'); }}>
+                                        <div className="absolute top-4 right-4 z-10 flex gap-2">
+                                            <button className="text-red-400/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all" onClick={(e) => deleteItem(e, app.id)} title="Eliminar">
+                                                <span className="material-symbols-outlined text-xl">delete</span>
+                                            </button>
+                                            <button className="text-slate-600 hover:text-primary transition-colors" onClick={(e) => openAppDetail(e, app.title, 'usuario@hub.corp', '***')} title="Ver Credenciales">
+                                                <span className="material-symbols-outlined text-xl">vpn_key</span>
+                                            </button>
+                                            <button className="text-slate-600 hover:text-yellow-400 transition-colors" onClick={toggleFavorite} title="Favorito">
+                                                <span className="material-symbols-outlined text-xl">star</span>
+                                            </button>
+                                        </div>
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                                                <span className="material-symbols-outlined">open_in_new</span>
+                                            </div>
+                                            <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border border-emerald-500/20 mr-24">{app.category}</span>
+                                        </div>
+                                        <h4 className="text-lg text-white font-medium group-hover:text-primary transition-colors">{app.title}</h4>
+                                        
+                                        <div className="mt-4 border-t border-primary/10 pt-3 flex justify-between items-center opacity-70 group-hover:opacity-100 transition-opacity">
+                                            <span className="text-[10px] text-primary font-bold uppercase tracking-widest flex items-center gap-1">Lanzar App</span>
+                                            <span className="material-symbols-outlined text-primary text-sm">rocket_launch</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    </div>
 
-                  {/* Right Column: Prompts & Links */}
-                  <div className="xl:col-span-5 space-y-8">
-                      {/* Prompts Section */}
-                      <section id="prompts" className="bg-surface border border-primary/10 p-6 rounded-sm">
-                          <div className="flex justify-between items-center mb-6">
-                              <h3 className="text-xl font-headline-md text-primary flex items-center gap-2">
-                                  <span className="material-symbols-outlined">terminal</span> Prompt Masters
-                              </h3>
-                          </div>
-                          <div className="space-y-4">
-                              {/* Prompt 1 */}
-                              <div className="bg-surface-dark border border-primary/10 p-4 group hover:border-accent-antigravity/40 transition-all rounded-sm relative cursor-pointer" 
-                                   onClick={() => openPromptDetail('Arquitectura React', 'Antigravity', 'bg-accent-antigravity/10 text-accent-antigravity border-accent-antigravity/20', 'Este prompt sirve para iniciar un nuevo proyecto de Frontend desde cero con un Agente AI. Se asegura de que la arquitectura sea escalable, use Vite y mantenga el diseño corporativo sin sobrecomplicar la estructura (evita over-engineering).', 'Actúa como un Senior Frontend Architect. Necesito que estructures una aplicación React usando Vite y TailwindCSS. \n1. Crea un layout de Dashboard.\n2. Implementa un store global ligero.\n3. Asegura que el diseño siga los lineamientos corporativos (Dark mode, glassmorphism).\nEvita over-engineering. Dame el plan paso a paso antes de codificar.')}>
-                                  <div className="flex justify-between items-start mb-2">
-                                      <div className="flex items-center gap-2">
-                                          <span className="bg-accent-antigravity/10 text-accent-antigravity px-2 py-0.5 rounded text-[10px] font-bold tracking-wider border border-accent-antigravity/20 flex items-center gap-1">
-                                              <span className="material-symbols-outlined text-[12px]">auto_awesome</span> Antigravity
-                                          </span>
-                                          <span className="text-xs text-slate-300 font-bold truncate max-w-[120px]">Arquitectura React</span>
-                                      </div>
-                                      <div className="flex items-center gap-2 z-10 relative">
-                                          <button className="text-slate-600 hover:text-yellow-400 transition-colors favorite-active text-yellow-400" onClick={toggleFavorite}><span className="material-symbols-outlined text-lg">star</span></button>
-                                          <button className="text-slate-500 hover:text-white transition-colors bg-surface border border-primary/10 rounded px-2 py-1 flex items-center gap-1 text-[10px] uppercase font-bold" 
-                                                  onClick={(e) => { e.stopPropagation(); copyText('Actúa como un Senior Frontend Architect...'); }}><span className="material-symbols-outlined text-sm">content_copy</span> Copiar</button>
-                                      </div>
-                                  </div>
-                                  <div className="bg-black/30 p-3 rounded border border-white/5 mt-3 h-20 overflow-hidden relative fade-bottom">
-                                      <code className="text-xs text-slate-400 font-mono whitespace-pre-wrap leading-relaxed">Actúa como un Senior Frontend Architect. Necesito que estructures una aplicación React usando Vite y TailwindCSS...</code>
-                                  </div>
-                              </div>
-                          </div>
-                      </section>
+                    {/* Right Column: Prompts & Links */}
+                    <div className="xl:col-span-5 space-y-8">
+                        {/* Prompts Section */}
+                        <section id="prompts" className="bg-surface border border-primary/10 p-6 rounded-sm">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-xl font-headline-md text-primary flex items-center gap-2">
+                                    <span className="material-symbols-outlined">terminal</span> Prompt Masters
+                                </h3>
+                            </div>
+                            <div className="space-y-4">
+                                {prompts.map(prompt => (
+                                    <div key={prompt.id} className="bg-surface-dark border border-primary/10 p-4 group hover:border-accent-antigravity/40 transition-all rounded-sm relative cursor-pointer" 
+                                        onClick={() => openPromptDetail(prompt.title, prompt.category, 'bg-accent-antigravity/10 text-accent-antigravity border-accent-antigravity/20', 'Prompt guardado dinámicamente.', prompt.content)}>
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className="bg-accent-antigravity/10 text-accent-antigravity px-2 py-0.5 rounded text-[10px] font-bold tracking-wider border border-accent-antigravity/20 flex items-center gap-1">
+                                                    <span className="material-symbols-outlined text-[12px]">auto_awesome</span> {prompt.category}
+                                                </span>
+                                                <span className="text-xs text-slate-300 font-bold truncate max-w-[120px]">{prompt.title}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2 z-10 relative">
+                                                <button className="text-red-400/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all" onClick={(e) => deleteItem(e, prompt.id)} title="Eliminar"><span className="material-symbols-outlined text-lg">delete</span></button>
+                                                <button className="text-slate-600 hover:text-yellow-400 transition-colors" onClick={toggleFavorite}><span className="material-symbols-outlined text-lg">star</span></button>
+                                                <button className="text-slate-500 hover:text-white transition-colors bg-surface border border-primary/10 rounded px-2 py-1 flex items-center gap-1 text-[10px] uppercase font-bold" 
+                                                        onClick={(e) => { e.stopPropagation(); copyText(prompt.content); }}><span className="material-symbols-outlined text-sm">content_copy</span> Copiar</button>
+                                            </div>
+                                        </div>
+                                        <div className="bg-black/30 p-3 rounded border border-white/5 mt-3 h-20 overflow-hidden relative fade-bottom">
+                                            <code className="text-xs text-slate-400 font-mono whitespace-pre-wrap leading-relaxed">{prompt.content}</code>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
 
-                      {/* SharePoint & Links Section */}
-                      <section id="links" className="bg-surface border border-primary/10 p-6 rounded-sm">
-                          <div className="flex justify-between items-center mb-5">
-                              <h3 className="text-xl font-headline-md text-primary flex items-center gap-2">
-                                  <span className="material-symbols-outlined">folder_shared</span> SharePoint & Docs
-                              </h3>
-                          </div>
-                          <div className="space-y-2">
-                              {/* Link 1 */}
-                              <a href="#" onClick={(e) => { e.preventDefault(); showToast('Abriendo SharePoint...', 'bg-blue-400'); }} className="flex items-center justify-between p-3 bg-surface-dark hover:bg-primary/10 border border-transparent hover:border-primary/30 transition-all rounded-sm group">
-                                  <div className="flex items-center gap-3">
-                                      <div className="w-8 h-8 rounded bg-blue-500/10 flex items-center justify-center text-blue-400">
-                                          <span className="material-symbols-outlined text-lg">folder</span>
-                                      </div>
-                                      <div>
-                                          <p className="text-sm font-bold text-slate-200 group-hover:text-primary transition-colors">Assets 3D Oficiales</p>
-                                          <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">SharePoint / Producción</p>
-                                      </div>
-                                  </div>
-                                  <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <button className="text-slate-500 hover:text-yellow-400 transition-colors" onClick={toggleFavorite}><span className="material-symbols-outlined text-sm">star</span></button>
-                                      <span className="material-symbols-outlined text-slate-400 text-sm">open_in_new</span>
-                                  </div>
-                              </a>
-                          </div>
-                      </section>
-                  </div>
-              </div>
+                        {/* SharePoint & Links Section */}
+                        <section id="links" className="bg-surface border border-primary/10 p-6 rounded-sm">
+                            <div className="flex justify-between items-center mb-5">
+                                <h3 className="text-xl font-headline-md text-primary flex items-center gap-2">
+                                    <span className="material-symbols-outlined">folder_shared</span> SharePoint & Docs
+                                </h3>
+                            </div>
+                            <div className="space-y-2">
+                                {links.map(link => (
+                                    <a key={link.id} href={link.url} target="_blank" rel="noreferrer" onClick={(e) => { if(link.url==='#') e.preventDefault(); showToast(`Abriendo ${link.title}...`, 'bg-blue-400'); }} className="flex items-center justify-between p-3 bg-surface-dark hover:bg-primary/10 border border-transparent hover:border-primary/30 transition-all rounded-sm group relative">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded bg-blue-500/10 flex items-center justify-center text-blue-400">
+                                                <span className="material-symbols-outlined text-lg">link</span>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-200 group-hover:text-primary transition-colors">{link.title}</p>
+                                                <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">{link.category}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button className="text-red-400/50 hover:text-red-400 transition-all" onClick={(e) => deleteItem(e, link.id)} title="Eliminar"><span className="material-symbols-outlined text-sm">delete</span></button>
+                                            <button className="text-slate-500 hover:text-yellow-400 transition-colors" onClick={toggleFavorite}><span className="material-symbols-outlined text-sm">star</span></button>
+                                            <span className="material-symbols-outlined text-slate-400 text-sm">open_in_new</span>
+                                        </div>
+                                    </a>
+                                ))}
+                            </div>
+                        </section>
+                    </div>
+                </div>
+              )}
           </div>
       </main>
 
@@ -296,18 +381,6 @@ export default function App() {
                             <code className="text-[13px] text-[#bac8da] font-mono whitespace-pre-wrap leading-relaxed block">{selectedPrompt.content}</code>
                         </div>
                     </div>
-                    {/* Observaciones (Mock) */}
-                    <div className="border-t border-primary/10 pt-6">
-                        <label className="block text-xs font-label-sm text-primary uppercase tracking-wider mb-4 flex items-center gap-2">
-                            <span className="material-symbols-outlined text-base">edit_note</span> Observaciones del Equipo
-                        </label>
-                        <div className="mt-4">
-                            <textarea className="w-full bg-[#04080c] border border-primary/20 rounded-sm p-3 text-white text-sm focus:border-primary focus:outline-none h-20 resize-none font-body-md" placeholder="Agrega una nota, caso de uso exitoso o advertencia..."></textarea>
-                            <div className="flex justify-end mt-3">
-                                <button className="bg-primary/10 text-primary border border-primary/20 px-5 py-2 rounded-sm text-xs font-bold hover:bg-primary" onClick={() => showToast('✅ Observación guardada', 'bg-emerald-400')}>Guardar Nota</button>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -336,26 +409,26 @@ export default function App() {
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-xs font-label-sm text-slate-400 uppercase tracking-wider mb-2">Título / Nombre</label>
-                                <input type="text" className="w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors" placeholder="Ej. Yield Manager 3D" />
+                                <input type="text" value={formTitle} onChange={e=>setFormTitle(e.target.value)} className="w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors" placeholder="Ej. Yield Manager 3D" />
                             </div>
                             
                             <div>
                                 <label className="block text-xs font-label-sm text-slate-400 uppercase tracking-wider mb-2">
                                     {aporteType === 'webapp' ? 'Categoría / Departamento' : aporteType === 'prompt' ? 'IA Recomendada (Ej. Claude)' : 'Ubicación (Ej. SharePoint)'}
                                 </label>
-                                {aporteType === 'webapp' || aporteType === 'link' ? (
-                                    <select className="w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors appearance-none">
-                                        <option>Producción</option><option>Fabricación</option><option>Retail</option><option>General</option>
+                                {aporteType === 'webapp' ? (
+                                    <select value={formCategory} onChange={e=>setFormCategory(e.target.value)} className="w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors appearance-none">
+                                        <option value="Producción">Producción</option><option value="Fabricación">Fabricación</option><option value="Retail">Retail</option><option value="General">General</option>
                                     </select>
                                 ) : (
-                                    <input type="text" className="w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors" placeholder="Ej. Claude 3.5 Sonnet" />
+                                    <input type="text" value={formCategory} onChange={e=>setFormCategory(e.target.value)} className="w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors" placeholder="Ej. Claude 3.5 Sonnet / SharePoint" />
                                 )}
                             </div>
 
                             {aporteType !== 'prompt' && (
                                 <div>
                                     <label className="block text-xs font-label-sm text-slate-400 uppercase tracking-wider mb-2">URL (Enlace)</label>
-                                    <input type="text" className="w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors font-mono" placeholder="https://" />
+                                    <input type="text" value={formUrl} onChange={e=>setFormUrl(e.target.value)} className="w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors font-mono" placeholder="https://" />
                                 </div>
                             )}
 
@@ -364,7 +437,7 @@ export default function App() {
                                     <label className="block text-xs font-label-sm text-slate-400 uppercase tracking-wider mb-2">
                                         {aporteType === 'webapp' ? 'Descripción Corta' : 'Contenido del Prompt'}
                                     </label>
-                                    <textarea className="w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors h-24 resize-none font-mono" placeholder="Escribe aquí..."></textarea>
+                                    <textarea value={formContent} onChange={e=>setFormContent(e.target.value)} className="w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors h-24 resize-none font-mono" placeholder="Escribe aquí..."></textarea>
                                 </div>
                             )}
                         </div>
@@ -372,7 +445,7 @@ export default function App() {
                 </div>
                 <div className="p-5 border-t border-primary/10 flex justify-end gap-3 bg-surface-dark rounded-b-sm">
                     <button className="text-slate-400 hover:text-white px-4 py-2 text-sm transition-colors font-medium" onClick={() => setAporteModalOpen(false)}>Cancelar</button>
-                    <button className="bg-primary text-surface-dark font-bold px-6 py-2 rounded-sm text-sm hover:bg-white transition-colors" onClick={() => { setAporteModalOpen(false); showToast("🚀 Aporte guardado exitosamente.", "bg-emerald-400"); }}>Guardar</button>
+                    <button className="bg-primary text-surface-dark font-bold px-6 py-2 rounded-sm text-sm hover:bg-white transition-colors" onClick={saveAporte}>Guardar</button>
                 </div>
             </div>
         </div>
