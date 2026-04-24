@@ -17,6 +17,10 @@ export default function App() {
 
   const [items, setItems] = useState<Item[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [favorites, setFavorites] = useState<number[]>(() => {
+    const saved = localStorage.getItem('hub_favorites');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   useEffect(() => {
     fetchItems();
@@ -49,15 +53,20 @@ export default function App() {
     });
   };
 
-  const toggleFavorite = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const toggleFavorite = (e: React.MouseEvent<HTMLButtonElement>, id: number) => {
     e.stopPropagation();
     e.preventDefault();
-    const btn = e.currentTarget;
-    btn.classList.toggle('text-yellow-400');
-    btn.classList.toggle('favorite-active');
     
-    if(btn.classList.contains('favorite-active')) showToast("⭐ Añadido a favoritos", "bg-yellow-400");
-    else showToast("Retirado de favoritos", "bg-slate-400");
+    setFavorites(prev => {
+      const isFav = prev.includes(id);
+      const newFavs = isFav ? prev.filter(f => f !== id) : [...prev, id];
+      localStorage.setItem('hub_favorites', JSON.stringify(newFavs));
+      
+      if(!isFav) showToast("⭐ Añadido a favoritos", "bg-yellow-400");
+      else showToast("Retirado de favoritos", "bg-slate-400");
+      
+      return newFavs;
+    });
   };
 
   // Modals state
@@ -142,9 +151,19 @@ export default function App() {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const webapps = items.filter(i => i.type === 'webapp');
-  const prompts = items.filter(i => i.type === 'prompt');
-  const links = items.filter(i => i.type === 'link');
+  const sortItems = (arr: Item[]) => {
+    return [...arr].sort((a, b) => {
+      const aFav = favorites.includes(a.id);
+      const bFav = favorites.includes(b.id);
+      if (aFav && !bFav) return -1;
+      if (!aFav && bFav) return 1;
+      return 0;
+    });
+  };
+
+  const webapps = sortItems(items.filter(i => i.type === 'webapp'));
+  const prompts = sortItems(items.filter(i => i.type === 'prompt'));
+  const links = sortItems(items.filter(i => i.type === 'link'));
 
   return (
     <div className="min-h-screen bg-surface-dark font-body-md text-slate-200 selection:bg-primary-container selection:text-surface-dark">
@@ -232,8 +251,8 @@ export default function App() {
                                             <button className="text-slate-600 hover:text-primary transition-colors" onClick={(e) => openAppDetail(e, app.title, 'usuario@hub.corp', '***')} title="Ver Credenciales">
                                                 <span className="material-symbols-outlined text-xl">vpn_key</span>
                                             </button>
-                                            <button className="text-slate-600 hover:text-yellow-400 transition-colors" onClick={toggleFavorite} title="Favorito">
-                                                <span className="material-symbols-outlined text-xl">star</span>
+                                            <button className={`transition-colors ${favorites.includes(app.id) ? 'text-yellow-400' : 'text-slate-600 hover:text-yellow-400'}`} onClick={(e) => toggleFavorite(e, app.id)} title="Favorito">
+                                                <span className="material-symbols-outlined text-xl" style={favorites.includes(app.id) ? { fontVariationSettings: "'FILL' 1" } : {}}>star</span>
                                             </button>
                                         </div>
                                         <div className="flex justify-between items-start mb-4">
@@ -276,7 +295,7 @@ export default function App() {
                                             </div>
                                             <div className="flex items-center gap-2 z-10 relative">
                                                 <button className="text-red-400/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all" onClick={(e) => deleteItem(e, prompt.id)} title="Eliminar"><span className="material-symbols-outlined text-lg">delete</span></button>
-                                                <button className="text-slate-600 hover:text-yellow-400 transition-colors" onClick={toggleFavorite}><span className="material-symbols-outlined text-lg">star</span></button>
+                                                <button className={`transition-colors ${favorites.includes(prompt.id) ? 'text-yellow-400' : 'text-slate-600 hover:text-yellow-400'}`} onClick={(e) => toggleFavorite(e, prompt.id)}><span className="material-symbols-outlined text-lg" style={favorites.includes(prompt.id) ? { fontVariationSettings: "'FILL' 1" } : {}}>star</span></button>
                                                 <button className="text-slate-500 hover:text-white transition-colors bg-surface border border-primary/10 rounded px-2 py-1 flex items-center gap-1 text-[10px] uppercase font-bold" 
                                                         onClick={(e) => { e.stopPropagation(); copyText(prompt.content); }}><span className="material-symbols-outlined text-sm">content_copy</span> Copiar</button>
                                             </div>
@@ -310,7 +329,7 @@ export default function App() {
                                         </div>
                                         <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
                                             <button className="text-red-400/50 hover:text-red-400 transition-all" onClick={(e) => deleteItem(e, link.id)} title="Eliminar"><span className="material-symbols-outlined text-sm">delete</span></button>
-                                            <button className="text-slate-500 hover:text-yellow-400 transition-colors" onClick={toggleFavorite}><span className="material-symbols-outlined text-sm">star</span></button>
+                                            <button className={`transition-colors ${favorites.includes(link.id) ? 'text-yellow-400' : 'text-slate-500 hover:text-yellow-400'}`} onClick={(e) => toggleFavorite(e, link.id)}><span className="material-symbols-outlined text-sm" style={favorites.includes(link.id) ? { fontVariationSettings: "'FILL' 1" } : {}}>star</span></button>
                                             <span className="material-symbols-outlined text-slate-400 text-sm">open_in_new</span>
                                         </div>
                                     </a>
