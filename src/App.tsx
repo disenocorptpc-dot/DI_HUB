@@ -130,7 +130,7 @@ function MusicPlayer() {
       </div>
       
       {currentSong && (
-        <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '300px', height: '300px', overflow: 'hidden' }}>
+        <div style={{ position: 'fixed', bottom: '0', right: '0', width: '300px', height: '300px', zIndex: -10, opacity: 0.01, pointerEvents: 'none' }}>
           <Player 
             url={currentSong.url} 
             playing={isPlaying} 
