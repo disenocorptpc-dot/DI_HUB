@@ -50,9 +50,15 @@ function MusicPlayer() {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if(!inputUrl) return;
+    
+    let finalUrl = inputUrl.trim();
+    if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+       finalUrl = 'https://' + finalUrl;
+    }
+
     setIsExtracting(true);
     try {
-      const res = await fetch(`/api/extract-audio?url=${encodeURIComponent(inputUrl)}`);
+      const res = await fetch(`/api/extract-audio?url=${encodeURIComponent(finalUrl)}`);
       if (res.ok) {
          const data = await res.json();
          setSongs(prev => [...prev, data]);
@@ -153,8 +159,7 @@ function MusicPlayer() {
       </div>
       
       {currentSong && isYouTube && (
-        <div style={{ position: 'absolute', bottom: '100%', right: '0', width: '300px', height: '170px', zIndex: 1000, background: '#000' }}>
-          <div className="text-xs text-white p-1 text-center bg-red-600">DEBUG YOUTUBE PLAYER</div>
+        <div style={{ position: 'fixed', bottom: '0', right: '0', width: '300px', height: '300px', zIndex: -100, pointerEvents: 'none' }}>
           <Player 
             url={currentSong.url} 
             playing={isPlaying} 
@@ -187,22 +192,18 @@ function MusicPlayer() {
       )}
 
       {currentSong && !isYouTube && (
-        <div style={{ position: 'absolute', bottom: '100%', right: '0', zIndex: 1000, background: '#000', padding: '10px' }}>
-          <div className="text-xs text-white mb-2 text-center bg-blue-600">DEBUG NATIVE AUDIO</div>
-          <audio 
-            controls
-            ref={audioRef} 
-            src={currentSong.url} 
-            onEnded={() => {
-              if(currentSongIndex < songs.length - 1) {
-                 setCurrentSongIndex(currentSongIndex + 1);
-                 setTimeout(()=>audioRef.current?.play(), 50);
-              } else {
-                 setIsPlaying(false);
-              }
-            }} 
-          />
-        </div>
+        <audio 
+          ref={audioRef} 
+          src={currentSong.url} 
+          onEnded={() => {
+            if(currentSongIndex < songs.length - 1) {
+               setCurrentSongIndex(currentSongIndex + 1);
+               setTimeout(()=>audioRef.current?.play(), 50);
+            } else {
+               setIsPlaying(false);
+            }
+          }} 
+        />
       )}
     </div>
   );
