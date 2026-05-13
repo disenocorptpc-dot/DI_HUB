@@ -1,42 +1,73 @@
 import { useState, useEffect, useRef } from 'react';
 
-const MOCK_SONG = {
-  title: "Enfoque Elegante (Take 2)",
-  url: "https://storage.googleapis.com/producer-app-public/clips/db717406-b9f7-44fe-8db6-f7517ea2a28d.m4a",
-  image: "https://storage.googleapis.com/producer-app-public/assets/2e455912-b545-5e65-a56a-850604e5ba74.jpg"
+type Song = {
+  title: string;
+  url: string;
+  image?: string;
 };
 
 function MusicPlayer() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [songs, setSongs] = useState([MOCK_SONG]);
+  const [songs, setSongs] = useState<Song[]>([]);
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
   const [inputUrl, setInputUrl] = useState('');
+  const [volume, setVolume] = useState(0.5);
+  const [isExtracting, setIsExtracting] = useState(false);
   
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume;
+    }
+  }, [volume, currentSongIndex]);
+
   const togglePlay = (e?: React.MouseEvent) => {
     if(e) e.stopPropagation();
-    if (!audioRef.current) return;
+    if (!audioRef.current || songs.length === 0) return;
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play();
+      audioRef.current.play().catch(console.error);
       setIsPlaying(true);
     }
   };
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if(!inputUrl) return;
-    // Mock addition
-    setSongs([...songs, {
-      title: "Nuevo Track AI (Simulado)",
-      url: MOCK_SONG.url,
-      image: MOCK_SONG.image
-    }]);
-    setInputUrl('');
+    setIsExtracting(true);
+    try {
+      const res = await fetch(`/api/extract-audio?url=${encodeURIComponent(inputUrl)}`);
+      if (res.ok) {
+         const data = await res.json();
+         setSongs(prev => [...prev, data]);
+         setInputUrl('');
+      } else {
+         alert("No se pudo extraer la pista de esa URL.");
+      }
+    } catch(err) {
+      console.error(err);
+      alert("Error de conexión al extraer audio.");
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  const handleRemove = (e: React.MouseEvent, idx: number) => {
+     e.stopPropagation();
+     const newSongs = [...songs];
+     newSongs.splice(idx, 1);
+     setSongs(newSongs);
+     if (currentSongIndex === idx) {
+        if (audioRef.current) audioRef.current.pause();
+        setIsPlaying(false);
+        setCurrentSongIndex(0);
+     } else if (currentSongIndex > idx) {
+        setCurrentSongIndex(currentSongIndex - 1);
+     }
   };
 
   const currentSong = songs[currentSongIndex];
@@ -47,15 +78,15 @@ function MusicPlayer() {
       <div className="h-[60px] flex items-center justify-between px-4 cursor-pointer hover:bg-white/5 border-b border-primary/10" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full overflow-hidden border border-primary/30 shadow-inner">
-            {currentSong ? <img src={currentSong.image} alt="cover" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-primary/20"></div>}
+            {currentSong ? <img src={currentSong.image} alt="cover" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-primary/20 flex items-center justify-center"><span className="material-symbols-outlined text-[16px] text-primary/50">music_note</span></div>}
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] text-primary font-bold uppercase tracking-widest leading-none mb-1">DI Radio</span>
-            <span className="text-sm text-white font-medium truncate max-w-[140px] leading-none">{currentSong ? currentSong.title : 'No track'}</span>
+            <span className="text-sm text-white font-medium truncate max-w-[140px] leading-none">{currentSong ? currentSong.title : 'Playlist Vacía'}</span>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center hover:bg-primary/20 transition-colors shadow-sm" onClick={togglePlay}>
+          <button className={`w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center transition-colors shadow-sm ${songs.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-primary/20'}`} onClick={togglePlay} disabled={songs.length === 0}>
             <span className="material-symbols-outlined text-sm">{isPlaying ? 'pause' : 'play_arrow'}</span>
           </button>
           <span className="material-symbols-outlined text-slate-500 text-sm transition-transform duration-300" style={{transform: isExpanded ? 'rotate(180deg)' : 'none'}}>expand_less</span>
@@ -64,23 +95,38 @@ function MusicPlayer() {
 
       {/* Expanded Content (Playlist) */}
       <div className="h-64 flex flex-col bg-[#04080c] relative overflow-hidden">
-        {/* URL Input */}
-        <div className="p-3 border-b border-primary/10 bg-surface-dark/50">
+        {/* Volume & URL Input */}
+        <div className="p-3 border-b border-primary/10 bg-surface-dark/50 space-y-3">
+           <div className="flex items-center gap-2 px-1">
+             <span className="material-symbols-outlined text-slate-400 text-sm">volume_down</span>
+             <input type="range" min="0" max="1" step="0.05" value={volume} onChange={e => setVolume(parseFloat(e.target.value))} className="w-full h-1 bg-surface border border-primary/20 rounded-lg appearance-none cursor-pointer accent-primary" />
+             <span className="material-symbols-outlined text-slate-400 text-sm">volume_up</span>
+           </div>
            <form onSubmit={handleAdd} className="flex gap-2 relative z-10">
-             <input type="text" value={inputUrl} onChange={e=>setInputUrl(e.target.value)} placeholder="Pega link de Flowmusic..." className="w-full bg-surface border border-primary/20 rounded-sm p-1.5 px-2 text-xs text-white focus:border-primary focus:outline-none placeholder-slate-500" />
-             <button type="submit" className="bg-primary/20 text-primary px-2 rounded-sm hover:bg-primary hover:text-surface-dark transition-colors font-bold"><span className="material-symbols-outlined text-[16px]">add</span></button>
+             <input type="text" value={inputUrl} onChange={e=>setInputUrl(e.target.value)} placeholder="Pega link de Flowmusic..." className="w-full bg-surface border border-primary/20 rounded-sm p-1.5 px-2 text-xs text-white focus:border-primary focus:outline-none placeholder-slate-500" disabled={isExtracting} />
+             <button type="submit" disabled={isExtracting} className={`px-2 rounded-sm font-bold transition-colors ${isExtracting ? 'bg-primary/10 text-primary/50' : 'bg-primary/20 text-primary hover:bg-primary hover:text-surface-dark'}`}>
+               {isExtracting ? <span className="material-symbols-outlined text-[16px] animate-spin">sync</span> : <span className="material-symbols-outlined text-[16px]">add</span>}
+             </button>
            </form>
         </div>
 
         {/* Playlist Items */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1 relative z-10 custom-scrollbar">
+          {songs.length === 0 && (
+             <div className="text-center text-xs text-slate-500 mt-6 px-4">Pega un link de Flowmusic para agregar tu primer track.</div>
+          )}
           {songs.map((song, idx) => (
-            <div key={idx} className={`flex items-center justify-between p-2 rounded-sm cursor-pointer transition-all ${idx === currentSongIndex ? 'bg-primary/10 border border-primary/20' : 'hover:bg-white/5 border border-transparent'}`} onClick={() => { setCurrentSongIndex(idx); setIsPlaying(true); setTimeout(()=>audioRef.current?.play(), 50); }}>
+            <div key={idx} className={`flex items-center justify-between p-2 rounded-sm cursor-pointer transition-all group ${idx === currentSongIndex ? 'bg-primary/10 border border-primary/20' : 'hover:bg-white/5 border border-transparent'}`} onClick={() => { setCurrentSongIndex(idx); setIsPlaying(true); setTimeout(()=>audioRef.current?.play(), 50); }}>
                <div className="flex items-center gap-3">
                  <div className="w-6 h-6 rounded-sm bg-primary/20 overflow-hidden shadow-sm"><img src={song.image} className="w-full h-full object-cover" /></div>
-                 <span className={`text-xs truncate max-w-[160px] ${idx === currentSongIndex ? 'text-primary font-bold' : 'text-slate-300'}`}>{song.title}</span>
+                 <span className={`text-xs truncate max-w-[130px] ${idx === currentSongIndex ? 'text-primary font-bold' : 'text-slate-300'}`}>{song.title}</span>
                </div>
-               {idx === currentSongIndex && isPlaying && <span className="material-symbols-outlined text-primary text-[14px] animate-pulse">graphic_eq</span>}
+               <div className="flex items-center gap-1">
+                 {idx === currentSongIndex && isPlaying && <span className="material-symbols-outlined text-primary text-[14px] animate-pulse">graphic_eq</span>}
+                 <button className="text-red-400/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity p-1" onClick={(e) => handleRemove(e, idx)}>
+                   <span className="material-symbols-outlined text-[14px]">delete</span>
+                 </button>
+               </div>
             </div>
           ))}
         </div>
