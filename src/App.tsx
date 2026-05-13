@@ -130,13 +130,17 @@ function MusicPlayer() {
       </div>
       
       {currentSong && (
-        <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '1px', height: '1px', opacity: 0, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '300px', height: '300px', overflow: 'hidden' }}>
           <Player 
             url={currentSong.url} 
             playing={isPlaying} 
             volume={volume} 
             width="100%" 
             height="100%" 
+            onReady={() => console.log('DI Radio: Player is Ready')}
+            onStart={() => console.log('DI Radio: Player Started')}
+            onPlay={() => console.log('DI Radio: Player is Playing')}
+            onError={(e: any) => console.error('DI Radio Error:', e)}
             onEnded={() => {
               if(currentSongIndex < songs.length - 1) {
                  setCurrentSongIndex(currentSongIndex + 1);
