@@ -115,8 +115,8 @@ function MusicPlayer() {
         <div className="p-3 border-b border-primary/10 bg-surface-dark/50 space-y-3">
            <div className="flex items-center gap-2 px-1">
              <span className="material-symbols-outlined text-slate-400 text-sm">volume_down</span>
-             <input type="range" min="0" max="1" step="0.05" value={volume} onChange={e => setVolume(parseFloat(e.target.value))} className="w-full h-1 bg-surface border border-primary/20 rounded-lg appearance-none cursor-pointer accent-primary" />
-             <span className="material-symbols-outlined text-slate-400 text-sm">volume_up</span>
+             <input type="range" min="0" max="1" step="0.05" value={volume} onChange={e => setVolume(Number(e.target.value.replace(',', '.')) || 0)} className="w-full h-1 bg-surface border border-primary/20 rounded-lg appearance-none cursor-pointer accent-primary" />
+             <span className="text-[10px] text-primary/50 w-6 text-right">{Math.round(volume * 100)}%</span>
            </div>
            <form onSubmit={handleAdd} className="flex gap-2 relative z-10">
              <input type="text" value={inputUrl} onChange={e=>setInputUrl(e.target.value)} placeholder="Pega link de YouTube o Flowmusic..." className="w-full bg-surface border border-primary/20 rounded-sm p-1.5 px-2 text-xs text-white focus:border-primary focus:outline-none placeholder-slate-500" disabled={isExtracting} />
