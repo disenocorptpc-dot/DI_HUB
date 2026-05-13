@@ -1,4 +1,105 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+
+const MOCK_SONG = {
+  title: "Enfoque Elegante (Take 2)",
+  url: "https://storage.googleapis.com/producer-app-public/clips/db717406-b9f7-44fe-8db6-f7517ea2a28d.m4a",
+  image: "https://storage.googleapis.com/producer-app-public/assets/2e455912-b545-5e65-a56a-850604e5ba74.jpg"
+};
+
+function MusicPlayer() {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [songs, setSongs] = useState([MOCK_SONG]);
+  const [currentSongIndex, setCurrentSongIndex] = useState(0);
+  const [inputUrl, setInputUrl] = useState('');
+  
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  const togglePlay = (e?: React.MouseEvent) => {
+    if(e) e.stopPropagation();
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play();
+      setIsPlaying(true);
+    }
+  };
+
+  const handleAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    if(!inputUrl) return;
+    // Mock addition
+    setSongs([...songs, {
+      title: "Nuevo Track AI (Simulado)",
+      url: MOCK_SONG.url,
+      image: MOCK_SONG.image
+    }]);
+    setInputUrl('');
+  };
+
+  const currentSong = songs[currentSongIndex];
+
+  return (
+    <div className={`fixed bottom-0 right-8 z-[200] w-80 bg-surface-dark border border-primary/20 rounded-t-lg shadow-2xl transition-all duration-300 ${isExpanded ? 'translate-y-0' : 'translate-y-[calc(100%-60px)]'}`}>
+      {/* Header (Always visible) */}
+      <div className="h-[60px] flex items-center justify-between px-4 cursor-pointer hover:bg-white/5 border-b border-primary/10" onClick={() => setIsExpanded(!isExpanded)}>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full overflow-hidden border border-primary/30 shadow-inner">
+            {currentSong ? <img src={currentSong.image} alt="cover" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-primary/20"></div>}
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[10px] text-primary font-bold uppercase tracking-widest leading-none mb-1">DI Radio</span>
+            <span className="text-sm text-white font-medium truncate max-w-[140px] leading-none">{currentSong ? currentSong.title : 'No track'}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center hover:bg-primary/20 transition-colors shadow-sm" onClick={togglePlay}>
+            <span className="material-symbols-outlined text-sm">{isPlaying ? 'pause' : 'play_arrow'}</span>
+          </button>
+          <span className="material-symbols-outlined text-slate-500 text-sm transition-transform duration-300" style={{transform: isExpanded ? 'rotate(180deg)' : 'none'}}>expand_less</span>
+        </div>
+      </div>
+
+      {/* Expanded Content (Playlist) */}
+      <div className="h-64 flex flex-col bg-[#04080c] relative overflow-hidden">
+        {/* URL Input */}
+        <div className="p-3 border-b border-primary/10 bg-surface-dark/50">
+           <form onSubmit={handleAdd} className="flex gap-2 relative z-10">
+             <input type="text" value={inputUrl} onChange={e=>setInputUrl(e.target.value)} placeholder="Pega link de Flowmusic..." className="w-full bg-surface border border-primary/20 rounded-sm p-1.5 px-2 text-xs text-white focus:border-primary focus:outline-none placeholder-slate-500" />
+             <button type="submit" className="bg-primary/20 text-primary px-2 rounded-sm hover:bg-primary hover:text-surface-dark transition-colors font-bold"><span className="material-symbols-outlined text-[16px]">add</span></button>
+           </form>
+        </div>
+
+        {/* Playlist Items */}
+        <div className="flex-1 overflow-y-auto p-2 space-y-1 relative z-10 custom-scrollbar">
+          {songs.map((song, idx) => (
+            <div key={idx} className={`flex items-center justify-between p-2 rounded-sm cursor-pointer transition-all ${idx === currentSongIndex ? 'bg-primary/10 border border-primary/20' : 'hover:bg-white/5 border border-transparent'}`} onClick={() => { setCurrentSongIndex(idx); setIsPlaying(true); setTimeout(()=>audioRef.current?.play(), 50); }}>
+               <div className="flex items-center gap-3">
+                 <div className="w-6 h-6 rounded-sm bg-primary/20 overflow-hidden shadow-sm"><img src={song.image} className="w-full h-full object-cover" /></div>
+                 <span className={`text-xs truncate max-w-[160px] ${idx === currentSongIndex ? 'text-primary font-bold' : 'text-slate-300'}`}>{song.title}</span>
+               </div>
+               {idx === currentSongIndex && isPlaying && <span className="material-symbols-outlined text-primary text-[14px] animate-pulse">graphic_eq</span>}
+            </div>
+          ))}
+        </div>
+        
+        {/* Subtle background glow */}
+        {currentSong && <div className="absolute top-0 left-0 w-full h-full opacity-[0.03] pointer-events-none" style={{ backgroundImage: `url(${currentSong.image})`, backgroundSize: 'cover', filter: 'blur(20px)' }}></div>}
+      </div>
+      
+      {currentSong && <audio ref={audioRef} src={currentSong.url} onEnded={() => {
+        if(currentSongIndex < songs.length - 1) {
+           setCurrentSongIndex(currentSongIndex + 1);
+           setTimeout(()=>audioRef.current?.play(), 50);
+        } else {
+           setIsPlaying(false);
+        }
+      }} />}
+    </div>
+  );
+}
 
 type Item = {
   id: number;
@@ -488,6 +589,9 @@ export default function App() {
             {toastMessage}
         </div>
       )}
+
+      {/* DI Radio Mini Player */}
+      <MusicPlayer />
     </div>
   );
 }
