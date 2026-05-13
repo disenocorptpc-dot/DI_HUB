@@ -130,21 +130,31 @@ function MusicPlayer() {
       </div>
       
       {currentSong && (
-        <Player 
-          url={currentSong.url} 
-          playing={isPlaying} 
-          volume={volume} 
-          width="0" 
-          height="0" 
-          onEnded={() => {
-            if(currentSongIndex < songs.length - 1) {
-               setCurrentSongIndex(currentSongIndex + 1);
-            } else {
-               setIsPlaying(false);
-            }
-          }} 
-          style={{ display: 'none' }}
-        />
+        <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '1px', height: '1px', opacity: 0, overflow: 'hidden' }}>
+          <Player 
+            url={currentSong.url} 
+            playing={isPlaying} 
+            volume={volume} 
+            width="100%" 
+            height="100%" 
+            onEnded={() => {
+              if(currentSongIndex < songs.length - 1) {
+                 setCurrentSongIndex(currentSongIndex + 1);
+              } else {
+                 setIsPlaying(false);
+              }
+            }} 
+            config={{
+              youtube: {
+                playerVars: { 
+                  controls: 0,
+                  disablekb: 1,
+                  playsinline: 1
+                }
+              }
+            }}
+          />
+        </div>
       )}
     </div>
   );
