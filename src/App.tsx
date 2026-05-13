@@ -159,7 +159,7 @@ function MusicPlayer() {
 
         {/* Hidden YouTube Player embedded securely inside the visible UI */}
         {currentSong && isYouTube && (
-          <div className="absolute w-[1px] h-[1px] overflow-hidden opacity-0 pointer-events-none">
+          <div style={{ position: 'fixed', bottom: '0', right: '0', width: '300px', height: '300px', zIndex: -100, pointerEvents: 'none', opacity: 1 }}>
             <Player 
               url={currentSong.url} 
               playing={isPlaying} 
