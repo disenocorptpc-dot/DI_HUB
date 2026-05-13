@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ReactPlayer from 'react-player';
 const Player: any = ReactPlayer;
 
@@ -20,14 +20,31 @@ function MusicPlayer() {
   const [volume, setVolume] = useState(0.5);
   const [isExtracting, setIsExtracting] = useState(false);
 
+  const audioRef = useRef<any>(null);
+
+  const currentSong = songs[currentSongIndex];
+  const isYouTube = currentSong && (currentSong.url.includes('youtube.com') || currentSong.url.includes('youtu.be'));
+
   useEffect(() => {
     localStorage.setItem('hub_radio_playlist', JSON.stringify(songs));
   }, [songs]);
 
+  useEffect(() => {
+    if (audioRef.current && !isYouTube) {
+      audioRef.current.volume = volume;
+    }
+  }, [volume, currentSongIndex, isYouTube]);
+
   const togglePlay = (e?: React.MouseEvent) => {
     if(e) e.stopPropagation();
     if (songs.length === 0) return;
-    setIsPlaying(!isPlaying);
+    if (isPlaying) {
+      if (audioRef.current && !isYouTube) audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      if (audioRef.current && !isYouTube) audioRef.current.play().catch(console.error);
+      setIsPlaying(true);
+    }
   };
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -57,6 +74,7 @@ function MusicPlayer() {
      newSongs.splice(idx, 1);
      setSongs(newSongs);
      if (currentSongIndex === idx) {
+        if (audioRef.current && !isYouTube) audioRef.current.pause();
         setIsPlaying(false);
         setCurrentSongIndex(0);
      } else if (currentSongIndex > idx) {
@@ -110,7 +128,14 @@ function MusicPlayer() {
              <div className="text-center text-xs text-slate-500 mt-6 px-4">Pega un link de YouTube o Flowmusic para agregar tu primer track.</div>
           )}
           {songs.map((song, idx) => (
-            <div key={idx} className={`flex items-center justify-between p-2 rounded-sm cursor-pointer transition-all group ${idx === currentSongIndex ? 'bg-primary/10 border border-primary/20' : 'hover:bg-white/5 border border-transparent'}`} onClick={() => { setCurrentSongIndex(idx); setIsPlaying(true); }}>
+            <div key={idx} className={`flex items-center justify-between p-2 rounded-sm cursor-pointer transition-all group ${idx === currentSongIndex ? 'bg-primary/10 border border-primary/20' : 'hover:bg-white/5 border border-transparent'}`} onClick={() => { 
+                setCurrentSongIndex(idx); 
+                setIsPlaying(true); 
+                const songIsYt = song.url.includes('youtube.com') || song.url.includes('youtu.be');
+                if (!songIsYt) {
+                   setTimeout(()=>audioRef.current?.play(), 50);
+                }
+            }}>
                <div className="flex items-center gap-3">
                  <div className="w-6 h-6 rounded-sm bg-primary/20 overflow-hidden shadow-sm"><img src={song.image} className="w-full h-full object-cover" /></div>
                  <span className={`text-xs truncate max-w-[130px] ${idx === currentSongIndex ? 'text-primary font-bold' : 'text-slate-300'}`}>{song.title}</span>
@@ -129,7 +154,7 @@ function MusicPlayer() {
         {currentSong && <div className="absolute top-0 left-0 w-full h-full opacity-[0.03] pointer-events-none" style={{ backgroundImage: `url(${currentSong.image})`, backgroundSize: 'cover', filter: 'blur(20px)' }}></div>}
       </div>
       
-      {currentSong && (
+      {currentSong && isYouTube && (
         <div style={{ position: 'fixed', bottom: '0', right: '0', width: '300px', height: '300px', zIndex: -100, pointerEvents: 'none' }}>
           <Player 
             url={currentSong.url} 
@@ -160,6 +185,21 @@ function MusicPlayer() {
             }}
           />
         </div>
+      )}
+
+      {currentSong && !isYouTube && (
+        <audio 
+          ref={audioRef} 
+          src={currentSong.url} 
+          onEnded={() => {
+            if(currentSongIndex < songs.length - 1) {
+               setCurrentSongIndex(currentSongIndex + 1);
+               setTimeout(()=>audioRef.current?.play(), 50);
+            } else {
+               setIsPlaying(false);
+            }
+          }} 
+        />
       )}
     </div>
   );
