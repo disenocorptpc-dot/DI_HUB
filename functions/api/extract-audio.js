@@ -39,6 +39,15 @@ export async function onRequest(context) {
       });
     }
 
+    // Direct audio links fallback
+    if (url.endsWith('.mp3') || url.endsWith('.m4a') || url.endsWith('.wav')) {
+      return new Response(JSON.stringify({
+        title: url.split('/').pop() || 'Archivo Directo',
+        url: url,
+        image: ''
+      }), { headers: { 'Content-Type': 'application/json' }});
+    }
+
     return new Response('Plataforma no soportada', { status: 400 });
   } catch (error) {
     return new Response(error.message, { status: 500 });
