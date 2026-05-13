@@ -156,41 +156,42 @@ function MusicPlayer() {
         
         {/* Subtle background glow */}
         {currentSong && <div className="absolute top-0 left-0 w-full h-full opacity-[0.03] pointer-events-none" style={{ backgroundImage: `url(${currentSong.image})`, backgroundSize: 'cover', filter: 'blur(20px)' }}></div>}
+
+        {/* Hidden YouTube Player embedded securely inside the visible UI */}
+        {currentSong && isYouTube && (
+          <div className="absolute w-[1px] h-[1px] overflow-hidden opacity-0 pointer-events-none">
+            <Player 
+              url={currentSong.url} 
+              playing={isPlaying} 
+              volume={volume} 
+              muted={false}
+              width="100%" 
+              height="100%" 
+              onReady={() => console.log('DI Radio: Player is Ready')}
+              onStart={() => console.log('DI Radio: Player Started')}
+              onPlay={() => console.log('DI Radio: Player is Playing')}
+              onError={(e: any) => console.error('DI Radio Error:', e)}
+              onEnded={() => {
+                if(currentSongIndex < songs.length - 1) {
+                   setCurrentSongIndex(currentSongIndex + 1);
+                } else {
+                   setIsPlaying(false);
+                }
+              }} 
+              config={{
+                youtube: {
+                  playerVars: { 
+                    controls: 0,
+                    disablekb: 1,
+                    playsinline: 1
+                  }
+                }
+              }}
+            />
+          </div>
+        )}
       </div>
       
-      {currentSong && isYouTube && (
-        <div style={{ position: 'fixed', bottom: '0', right: '0', width: '300px', height: '300px', zIndex: -100, pointerEvents: 'none' }}>
-          <Player 
-            url={currentSong.url} 
-            playing={isPlaying} 
-            volume={volume} 
-            muted={false}
-            width="100%" 
-            height="100%" 
-            onReady={() => console.log('DI Radio: Player is Ready')}
-            onStart={() => console.log('DI Radio: Player Started')}
-            onPlay={() => console.log('DI Radio: Player is Playing')}
-            onError={(e: any) => console.error('DI Radio Error:', e)}
-            onEnded={() => {
-              if(currentSongIndex < songs.length - 1) {
-                 setCurrentSongIndex(currentSongIndex + 1);
-              } else {
-                 setIsPlaying(false);
-              }
-            }} 
-            config={{
-              youtube: {
-                playerVars: { 
-                  controls: 0,
-                  disablekb: 1,
-                  playsinline: 1
-                }
-              }
-            }}
-          />
-        </div>
-      )}
-
       {currentSong && !isYouTube && (
         <audio 
           ref={audioRef} 
