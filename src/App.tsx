@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import ReactPlayer from 'react-player';
+const Player: any = ReactPlayer;
 
 type Song = {
   title: string;
@@ -128,21 +129,23 @@ function MusicPlayer() {
         {currentSong && <div className="absolute top-0 left-0 w-full h-full opacity-[0.03] pointer-events-none" style={{ backgroundImage: `url(${currentSong.image})`, backgroundSize: 'cover', filter: 'blur(20px)' }}></div>}
       </div>
       
-      {currentSong && <ReactPlayer 
-        url={currentSong.url} 
-        playing={isPlaying} 
-        volume={volume} 
-        width="0" 
-        height="0" 
-        onEnded={() => {
-          if(currentSongIndex < songs.length - 1) {
-             setCurrentSongIndex(currentSongIndex + 1);
-          } else {
-             setIsPlaying(false);
-          }
-        }} 
-        style={{ display: 'none' }}
-      />}
+      {currentSong && (
+        <Player 
+          url={currentSong.url} 
+          playing={isPlaying} 
+          volume={volume} 
+          width="0" 
+          height="0" 
+          onEnded={() => {
+            if(currentSongIndex < songs.length - 1) {
+               setCurrentSongIndex(currentSongIndex + 1);
+            } else {
+               setIsPlaying(false);
+            }
+          }} 
+          style={{ display: 'none' }}
+        />
+      )}
     </div>
   );
 }
