@@ -82,8 +82,6 @@ function MusicPlayer() {
      }
   };
 
-  const currentSong = songs[currentSongIndex];
-
   return (
     <div className={`fixed bottom-0 right-8 z-[200] w-80 bg-surface-dark border border-primary/20 rounded-t-lg shadow-2xl transition-all duration-300 ${isExpanded ? 'translate-y-0' : 'translate-y-[calc(100%-60px)]'}`}>
       {/* Header (Always visible) */}
