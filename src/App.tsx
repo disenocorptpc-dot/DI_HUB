@@ -130,11 +130,12 @@ function MusicPlayer() {
       </div>
       
       {currentSong && (
-        <div style={{ position: 'fixed', bottom: '0', right: '0', width: '300px', height: '300px', zIndex: -10, opacity: 0.01, pointerEvents: 'none' }}>
+        <div style={{ position: 'fixed', bottom: '0', right: '0', width: '300px', height: '300px', zIndex: -100, pointerEvents: 'none' }}>
           <Player 
             url={currentSong.url} 
             playing={isPlaying} 
             volume={volume} 
+            muted={false}
             width="100%" 
             height="100%" 
             onReady={() => console.log('DI Radio: Player is Ready')}
