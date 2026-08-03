@@ -37,7 +37,6 @@ export type ItemMeta = {
   birthday?: string;
   email?: string;
   phone?: string;
-  location?: string;
 
   // note
   source?: string;

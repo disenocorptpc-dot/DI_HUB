@@ -159,7 +159,7 @@ export default function DetailModal({ item, onClose, onEdit, onCopy }: Props) {
         title={item.title}
         size="md"
         onClose={onClose}
-        subtitle={<span className="text-xs text-slate-400">{item.meta.role || item.category || 'Sin puesto'}</span>}
+        subtitle={<span className="text-xs text-slate-400">{item.meta.role || 'Sin puesto'}</span>}
         footer={<EditButton item={item} onEdit={onEdit} />}
       >
         <div className="grid grid-cols-1 gap-4">
@@ -182,12 +182,6 @@ export default function DetailModal({ item, onClose, onEdit, onCopy }: Props) {
           {item.meta.phone && (
             <Field label="Teléfono">
               <CopyRow value={item.meta.phone} onCopy={onCopy} />
-            </Field>
-          )}
-
-          {item.meta.location && (
-            <Field label="Ubicación">
-              <p className="text-sm text-slate-200">{item.meta.location}</p>
             </Field>
           )}
 

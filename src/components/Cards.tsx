@@ -183,7 +183,7 @@ export function PersonCard({ item, handlers, onOpen }: CardProps) {
         <p className="text-sm text-white font-medium truncate group-hover:text-primary transition-colors">
           {item.title}
         </p>
-        <p className="text-[10px] text-slate-500 truncate">{item.meta.role || item.category || 'Sin puesto'}</p>
+        <p className="text-[10px] text-slate-500 truncate">{item.meta.role || 'Sin puesto'}</p>
       </div>
 
       {item.meta.birthday && (

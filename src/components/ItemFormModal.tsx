@@ -139,6 +139,7 @@ export default function ItemFormModal({ initial, editingId, onClose, onSave }: P
           />
         </div>
 
+        {type !== 'person' && (
         <div>
           <Label>{CATEGORY_LABELS[type]}</Label>
           {type === 'webapp' ? (
@@ -165,13 +166,12 @@ export default function ItemFormModal({ initial, editingId, onClose, onSave }: P
                   ? 'Ej. Claude / Antigravity'
                   : type === 'note'
                     ? 'Ej. Juntas, Ideas, Procesos'
-                    : type === 'person'
-                      ? 'Ej. Diseño Industrial'
-                      : 'Ej. SharePoint / Marketing'
+                    : 'Ej. SharePoint / Marketing'
               }
             />
           )}
         </div>
+        )}
 
         {(type === 'webapp' || type === 'link') && (
           <div>
@@ -301,27 +301,15 @@ export default function ItemFormModal({ initial, editingId, onClose, onSave }: P
 
         {type === 'person' && (
           <>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Puesto</Label>
-                <input
-                  type="text"
-                  value={draft.meta.role ?? ''}
-                  onChange={e => patchMeta({ role: e.target.value })}
-                  className={inputClass}
-                  placeholder="Ej. Diseñador Senior"
-                />
-              </div>
-              <div>
-                <Label>Ubicación</Label>
-                <input
-                  type="text"
-                  value={draft.meta.location ?? ''}
-                  onChange={e => patchMeta({ location: e.target.value })}
-                  className={inputClass}
-                  placeholder="Ej. Cancún"
-                />
-              </div>
+            <div>
+              <Label>Puesto</Label>
+              <input
+                type="text"
+                value={draft.meta.role ?? ''}
+                onChange={e => patchMeta({ role: e.target.value })}
+                className={inputClass}
+                placeholder="Ej. Diseñador Senior"
+              />
             </div>
 
             <div>

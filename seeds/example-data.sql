@@ -36,7 +36,7 @@ npm run dev:full
 Queda en localhost:8788 con las Functions y la D1 local.',
  'setup,dev', '{}'),
 
-('person', 'Nombre de Ejemplo', 'Diseño Industrial', '', '',
+('person', 'Nombre de Ejemplo', '', '', '',
  'Este registro es de ejemplo. Bórralo cuando agregues a tu equipo real.',
  'ejemplo',
  '{"role":"Puesto de ejemplo","birthday":"03-15","email":"ejemplo@ejemplo.com","phone":"Ext. 0000"}');
