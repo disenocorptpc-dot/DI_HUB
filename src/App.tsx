@@ -55,13 +55,23 @@ const SECTION_GRIDS: Record<ItemType, string> = {
   person: 'space-y-2',
 };
 
+const ADD_LABELS: Record<ItemType, string> = {
+  webapp: 'Agregar web app',
+  prompt: 'Agregar prompt',
+  link: 'Agregar link',
+  note: 'Nueva nota',
+  person: 'Agregar persona',
+};
+
 function Section({
   type,
   count,
+  onAdd,
   children,
 }: {
   type: ItemType;
   count: number;
+  onAdd: (type: ItemType) => void;
   children: React.ReactNode;
 }) {
   return (
@@ -70,7 +80,17 @@ function Section({
         <h3 className="text-lg font-headline-md text-primary flex items-center gap-2">
           <span className="material-symbols-outlined">{TYPE_ICONS[type]}</span> {SECTION_TITLES[type]}
         </h3>
-        {count > 0 && <span className="text-xs text-slate-600 tabular-nums">{count}</span>}
+        <div className="flex items-center gap-3">
+          {count > 0 && <span className="text-xs text-slate-600 tabular-nums">{count}</span>}
+          <button
+            onClick={() => onAdd(type)}
+            title={ADD_LABELS[type]}
+            aria-label={ADD_LABELS[type]}
+            className="w-7 h-7 grid place-items-center rounded-sm border border-primary/20 text-primary/70 hover:text-surface-dark hover:bg-primary hover:border-primary transition-colors"
+          >
+            <span className="material-symbols-outlined text-[18px]">add</span>
+          </button>
+        </div>
       </div>
       {children}
     </section>
@@ -154,6 +174,11 @@ export default function App() {
   const openEditor = useCallback((item: Item) => {
     setDetail(null);
     setForm({ initial: draftFromItem(item), editingId: item.id });
+  }, []);
+
+  /** Abre el formulario en blanco con el tipo ya elegido. */
+  const startCreate = useCallback((type: ItemType) => {
+    setForm({ initial: emptyDraft(type), editingId: null });
   }, []);
 
   const handlers: ItemHandlers = useMemo(
@@ -277,16 +302,22 @@ export default function App() {
       if (isFiltering && group.length === 0) return null;
 
       return (
-        <Section key={type} type={type} count={group.length}>
+        <Section key={type} type={type} count={group.length} onAdd={startCreate}>
           {group.length === 0 ? (
-            <p className="text-xs text-slate-500 py-2">{SECTION_EMPTY[type]}</p>
+            <button
+              onClick={() => startCreate(type)}
+              className="w-full text-left text-xs text-slate-500 py-3 px-3 border border-dashed border-primary/20 rounded-sm hover:border-primary/40 hover:text-slate-400 transition-colors flex items-center gap-2"
+            >
+              <span className="material-symbols-outlined text-[16px] text-primary/50">add</span>
+              {SECTION_EMPTY[type]}
+            </button>
           ) : (
             <div className={SECTION_GRIDS[type]}>{group.map(renderCard)}</div>
           )}
         </Section>
       );
     },
-    [groupOf, isFiltering, renderCard],
+    [groupOf, isFiltering, renderCard, startCreate],
   );
 
   const clearFilters = () => {
@@ -323,7 +354,7 @@ export default function App() {
         </div>
         <div className="flex items-center gap-4">
           <button
-            onClick={() => setForm({ initial: emptyDraft(typeFilter ?? 'webapp'), editingId: null })}
+            onClick={() => startCreate(typeFilter ?? 'webapp')}
             className="bg-primary-container text-surface-dark font-bold py-1.5 px-4 rounded transition-all hover:bg-primary text-sm flex items-center gap-2 whitespace-nowrap"
           >
             <span className="material-symbols-outlined text-sm">add</span> Nuevo Aporte
