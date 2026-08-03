@@ -1,706 +1,481 @@
-import { useState, useEffect, useRef } from 'react';
-import ReactPlayer from 'react-player';
-const Player: any = ReactPlayer;
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import BirthdayStrip from './components/BirthdayStrip';
+import { LinkRow, NoteCard, PersonCard, PromptCard, WebAppCard } from './components/Cards';
+import DetailModal from './components/DetailModal';
+import type { ItemHandlers } from './components/ItemActions';
+import ItemFormModal from './components/ItemFormModal';
+import Modal from './components/Modal';
+import Sidebar from './components/Sidebar';
+import Toast, { type ToastState } from './components/Toast';
+import { createItem, deleteItem as requestDelete, errorMessage, fetchItems, safeHref, updateItem } from './lib/api';
+import { collectTags, matchesQuery } from './lib/search';
+import {
+  ITEM_TYPES,
+  TYPE_ICONS,
+  draftFromItem,
+  emptyDraft,
+  type Item,
+  type ItemDraft,
+  type ItemType,
+} from './types';
 
-type Song = {
-  title: string;
-  url: string;
-  image?: string;
+const FAVORITES_KEY = 'hub_favorites';
+
+const readFavorites = (): number[] => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((n): n is number => typeof n === 'number') : [];
+  } catch {
+    // Storage corrupto no debe dejar la app en blanco.
+    return [];
+  }
 };
 
-function MusicPlayer() {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [songs, setSongs] = useState<Song[]>(() => {
-    const saved = localStorage.getItem('hub_radio_playlist');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [currentSongIndex, setCurrentSongIndex] = useState(0);
-  const [inputUrl, setInputUrl] = useState('');
-  const [volume, setVolume] = useState(0.5);
-  const [isExtracting, setIsExtracting] = useState(false);
+const SECTION_TITLES: Record<ItemType, string> = {
+  webapp: 'Web Apps Internas',
+  prompt: 'Prompt Masters',
+  link: 'SharePoint & Docs',
+  note: 'Notas',
+  person: 'Equipo',
+};
 
-  const audioRef = useRef<any>(null);
+const SECTION_EMPTY: Record<ItemType, string> = {
+  webapp: 'Sin apps registradas todavía.',
+  prompt: 'Sin prompts guardados todavía.',
+  link: 'Sin links todavía.',
+  note: 'Sin notas todavía. Aquí van juntas, ideas y procesos.',
+  person: 'Sin personas todavía. Agrega a tu equipo y sus cumpleaños.',
+};
 
-  const currentSong = songs[currentSongIndex];
-  const isYouTube = currentSong && (currentSong.url.includes('youtube.com') || currentSong.url.includes('youtu.be'));
+const SECTION_GRIDS: Record<ItemType, string> = {
+  webapp: 'grid grid-cols-1 lg:grid-cols-2 gap-2',
+  prompt: 'space-y-3',
+  link: 'space-y-2',
+  note: 'grid grid-cols-1 lg:grid-cols-2 gap-2',
+  person: 'space-y-2',
+};
 
-  useEffect(() => {
-    localStorage.setItem('hub_radio_playlist', JSON.stringify(songs));
-  }, [songs]);
-
-  useEffect(() => {
-    if (audioRef.current && !isYouTube) {
-      audioRef.current.volume = volume;
-    }
-  }, [volume, currentSongIndex, isYouTube]);
-
-  const togglePlay = (e?: React.MouseEvent) => {
-    if(e) e.stopPropagation();
-    if (songs.length === 0) return;
-    if (isPlaying) {
-      if (audioRef.current && !isYouTube) audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      if (audioRef.current && !isYouTube) audioRef.current.play().catch(console.error);
-      setIsPlaying(true);
-    }
-  };
-
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if(!inputUrl) return;
-    
-    let finalUrl = inputUrl.trim();
-    if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
-       finalUrl = 'https://' + finalUrl;
-    }
-
-    setIsExtracting(true);
-    try {
-      const res = await fetch(`/api/extract-audio?url=${encodeURIComponent(finalUrl)}`);
-      if (res.ok) {
-         const data = await res.json();
-         setSongs(prev => [...prev, data]);
-         setInputUrl('');
-      } else {
-         alert("No se pudo extraer la pista de esa URL.");
-      }
-    } catch(err) {
-      console.error(err);
-      alert("Error de conexión al extraer audio.");
-    } finally {
-      setIsExtracting(false);
-    }
-  };
-
-  const handleRemove = (e: React.MouseEvent, idx: number) => {
-     e.stopPropagation();
-     const newSongs = [...songs];
-     newSongs.splice(idx, 1);
-     setSongs(newSongs);
-     if (currentSongIndex === idx) {
-        if (audioRef.current && !isYouTube) audioRef.current.pause();
-        setIsPlaying(false);
-        setCurrentSongIndex(0);
-     } else if (currentSongIndex > idx) {
-        setCurrentSongIndex(currentSongIndex - 1);
-     }
-  };
-
+function Section({
+  type,
+  count,
+  children,
+}: {
+  type: ItemType;
+  count: number;
+  children: React.ReactNode;
+}) {
   return (
-    <div className={`fixed bottom-0 right-8 z-[200] w-80 bg-surface-dark border border-primary/20 rounded-t-lg shadow-2xl transition-all duration-300 ${isExpanded ? 'translate-y-0' : 'translate-y-[calc(100%-60px)]'}`}>
-      {/* Header (Always visible) */}
-      <div className="h-[60px] flex items-center justify-between px-4 cursor-pointer hover:bg-white/5 border-b border-primary/10" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full overflow-hidden border border-primary/30 shadow-inner">
-            {currentSong ? <img src={currentSong.image} alt="cover" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-primary/20 flex items-center justify-center"><span className="material-symbols-outlined text-[16px] text-primary/50">music_note</span></div>}
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] text-primary font-bold uppercase tracking-widest leading-none mb-1">DI Radio</span>
-            <span className="text-sm text-white font-medium truncate max-w-[140px] leading-none">{currentSong ? currentSong.title : 'Playlist Vacía'}</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button className={`w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center transition-colors shadow-sm ${songs.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-primary/20'}`} onClick={togglePlay} disabled={songs.length === 0}>
-            <span className="material-symbols-outlined text-sm">{isPlaying ? 'pause' : 'play_arrow'}</span>
-          </button>
-          <span className="material-symbols-outlined text-slate-500 text-sm transition-transform duration-300" style={{transform: isExpanded ? 'rotate(180deg)' : 'none'}}>expand_less</span>
-        </div>
+    <section id={type} className="bg-surface border border-primary/10 p-5 rounded-sm">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-headline-md text-primary flex items-center gap-2">
+          <span className="material-symbols-outlined">{TYPE_ICONS[type]}</span> {SECTION_TITLES[type]}
+        </h3>
+        {count > 0 && <span className="text-xs text-slate-600 tabular-nums">{count}</span>}
       </div>
-
-      {/* Expanded Content (Playlist) */}
-      <div className="h-64 flex flex-col bg-[#04080c] relative overflow-hidden">
-        {/* Volume & URL Input */}
-        <div className="p-3 border-b border-primary/10 bg-surface-dark/50 space-y-3">
-           <div className="flex items-center gap-2 px-1">
-             <span className="material-symbols-outlined text-slate-400 text-sm">volume_down</span>
-             <input type="range" min="0" max="1" step="0.05" value={volume} onChange={e => setVolume(Number(e.target.value.replace(',', '.')) || 0)} className="w-full h-1 bg-surface border border-primary/20 rounded-lg appearance-none cursor-pointer accent-primary" />
-             <span className="text-[10px] text-primary/50 w-6 text-right">{Math.round(volume * 100)}%</span>
-           </div>
-           <form onSubmit={handleAdd} className="flex gap-2 relative z-10">
-             <input type="text" value={inputUrl} onChange={e=>setInputUrl(e.target.value)} placeholder="Pega link de YouTube o Flowmusic..." className="w-full bg-surface border border-primary/20 rounded-sm p-1.5 px-2 text-xs text-white focus:border-primary focus:outline-none placeholder-slate-500" disabled={isExtracting} />
-             <button type="submit" disabled={isExtracting} className={`px-2 rounded-sm font-bold transition-colors ${isExtracting ? 'bg-primary/10 text-primary/50' : 'bg-primary/20 text-primary hover:bg-primary hover:text-surface-dark'}`}>
-               {isExtracting ? <span className="material-symbols-outlined text-[16px] animate-spin">sync</span> : <span className="material-symbols-outlined text-[16px]">add</span>}
-             </button>
-           </form>
-        </div>
-
-        {/* Playlist Items */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1 relative z-10 custom-scrollbar">
-          {songs.length === 0 && (
-             <div className="text-center text-xs text-slate-500 mt-6 px-4">Pega un link de YouTube o Flowmusic para agregar tu primer track.</div>
-          )}
-          {songs.map((song, idx) => (
-            <div key={idx} className={`flex items-center justify-between p-2 rounded-sm cursor-pointer transition-all group ${idx === currentSongIndex ? 'bg-primary/10 border border-primary/20' : 'hover:bg-white/5 border border-transparent'}`} onClick={() => { 
-                setCurrentSongIndex(idx); 
-                setIsPlaying(true); 
-                const songIsYt = song.url.includes('youtube.com') || song.url.includes('youtu.be');
-                if (!songIsYt) {
-                   setTimeout(()=>audioRef.current?.play(), 50);
-                }
-            }}>
-               <div className="flex items-center gap-3">
-                 <div className="w-6 h-6 rounded-sm bg-primary/20 overflow-hidden shadow-sm"><img src={song.image} className="w-full h-full object-cover" /></div>
-                 <span className={`text-xs truncate max-w-[130px] ${idx === currentSongIndex ? 'text-primary font-bold' : 'text-slate-300'}`}>{song.title}</span>
-               </div>
-               <div className="flex items-center gap-1">
-                 {idx === currentSongIndex && isPlaying && <span className="material-symbols-outlined text-primary text-[14px] animate-pulse">graphic_eq</span>}
-                 <button className="text-red-400/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity p-1" onClick={(e) => handleRemove(e, idx)}>
-                   <span className="material-symbols-outlined text-[14px]">delete</span>
-                 </button>
-               </div>
-            </div>
-          ))}
-        </div>
-        
-        {/* Subtle background glow */}
-        {currentSong && <div className="absolute top-0 left-0 w-full h-full opacity-[0.03] pointer-events-none" style={{ backgroundImage: `url(${currentSong.image})`, backgroundSize: 'cover', filter: 'blur(20px)' }}></div>}
-
-        {/* Hidden YouTube Player embedded securely inside the visible UI */}
-        {currentSong && isYouTube && (
-          <div style={{ position: 'fixed', bottom: '0', right: '0', width: '300px', height: '300px', zIndex: -100, pointerEvents: 'none', opacity: 1 }}>
-            <Player 
-              url={currentSong.url} 
-              playing={isPlaying} 
-              volume={volume} 
-              muted={false}
-              width="100%" 
-              height="100%" 
-              onReady={() => console.log('DI Radio: Player is Ready')}
-              onStart={() => console.log('DI Radio: Player Started')}
-              onPlay={() => console.log('DI Radio: Player is Playing')}
-              onError={(e: any) => console.error('DI Radio Error:', e)}
-              onEnded={() => {
-                if(currentSongIndex < songs.length - 1) {
-                   setCurrentSongIndex(currentSongIndex + 1);
-                } else {
-                   setIsPlaying(false);
-                }
-              }} 
-              config={{
-                youtube: {
-                  playerVars: { 
-                    controls: 0,
-                    disablekb: 1,
-                    playsinline: 1
-                  }
-                }
-              }}
-            />
-          </div>
-        )}
-      </div>
-      
-      {currentSong && !isYouTube && (
-        <audio 
-          ref={audioRef} 
-          src={currentSong.url} 
-          onEnded={() => {
-            if(currentSongIndex < songs.length - 1) {
-               setCurrentSongIndex(currentSongIndex + 1);
-               setTimeout(()=>audioRef.current?.play(), 50);
-            } else {
-               setIsPlaying(false);
-            }
-          }} 
-        />
-      )}
-    </div>
+      {children}
+    </section>
   );
 }
 
-type Item = {
-  id: number;
-  type: 'webapp' | 'prompt' | 'link';
-  title: string;
-  category: string;
-  url: string;
-  description: string;
-  content: string;
-};
-
 export default function App() {
-  const [toastMessage, setToastMessage] = useState('');
-  const [toastColor, setToastColor] = useState('bg-primary');
-  const [isToastVisible, setIsToastVisible] = useState(false);
-
   const [items, setItems] = useState<Item[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [favorites, setFavorites] = useState<number[]>(() => {
-    const saved = localStorage.getItem('hub_favorites');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [loadError, setLoadError] = useState('');
 
-  useEffect(() => {
-    fetchItems();
+  const [toast, setToast] = useState<ToastState>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
+
+  const [favorites, setFavorites] = useState<number[]>(readFavorites);
+
+  const [query, setQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<ItemType | null>(null);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+
+  const [form, setForm] = useState<{ initial: ItemDraft; editingId: number | null } | null>(null);
+  const [detail, setDetail] = useState<Item | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Item | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const showToast = useCallback((message: string, color = 'bg-primary') => {
+    window.clearTimeout(toastTimer.current);
+    setToast({ message, color });
+    toastTimer.current = window.setTimeout(() => setToast(null), 3000);
   }, []);
 
-  const fetchItems = async () => {
-    try {
-      const res = await fetch('/api/items');
-      if (res.ok) {
-        const data = await res.json();
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
+  // Incrementar el token vuelve a disparar la carga. Los setState viven dentro de
+  // los callbacks de la promesa, no en el cuerpo del efecto.
+  const [reloadToken, setReloadToken] = useState(0);
+  const reload = useCallback(() => setReloadToken(token => token + 1), []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchItems()
+      .then(data => {
+        if (cancelled) return;
         setItems(data);
-      }
-    } catch (e) {
-      console.error("Error fetching items", e);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const showToast = (message: string, colorClass = "bg-primary") => {
-    setToastMessage(message);
-    setToastColor(colorClass);
-    setIsToastVisible(true);
-    setTimeout(() => setIsToastVisible(false), 3000);
-  };
-
-  const copyText = (text: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      showToast("✅ Copiado al portapapeles", "bg-primary");
-    });
-  };
-
-  const toggleFavorite = (e: React.MouseEvent<HTMLButtonElement>, id: number) => {
-    e.stopPropagation();
-    e.preventDefault();
-    
-    setFavorites(prev => {
-      const isFav = prev.includes(id);
-      const newFavs = isFav ? prev.filter(f => f !== id) : [...prev, id];
-      localStorage.setItem('hub_favorites', JSON.stringify(newFavs));
-      
-      if(!isFav) showToast("⭐ Añadido a favoritos", "bg-yellow-400");
-      else showToast("Retirado de favoritos", "bg-slate-400");
-      
-      return newFavs;
-    });
-  };
-
-  // Modals state
-  const [aporteModalOpen, setAporteModalOpen] = useState(false);
-  const [aporteType, setAporteType] = useState<'webapp' | 'prompt' | 'link'>('webapp');
-  
-  // Form State
-  const [formTitle, setFormTitle] = useState('');
-  const [formCategory, setFormCategory] = useState('');
-  const [formUrl, setFormUrl] = useState('');
-  const [formDescription, setFormDescription] = useState('');
-  const [formContent, setFormContent] = useState('');
-
-  const [appDetailModalOpen, setAppDetailModalOpen] = useState(false);
-  const [selectedApp, setSelectedApp] = useState({ title: '', user: '', pass: '' });
-
-  const [promptDetailModalOpen, setPromptDetailModalOpen] = useState(false);
-  const [selectedPrompt, setSelectedPrompt] = useState({ title: '', aiTarget: '', aiClass: '', description: '', content: '' });
-
-  const openAppDetail = (e: React.MouseEvent, title: string, user: string, pass: string) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setSelectedApp({ title, user, pass });
-    setAppDetailModalOpen(true);
-  };
-
-  const openPromptDetail = (title: string, aiTarget: string, aiClass: string, description: string, content: string) => {
-    setSelectedPrompt({ title, aiTarget, aiClass, description, content });
-    setPromptDetailModalOpen(true);
-  };
-
-  const saveAporte = async () => {
-    if(!formTitle) {
-      showToast("El título es obligatorio", "bg-red-400");
-      return;
-    }
-    try {
-      const payload = {
-        type: aporteType,
-        title: formTitle,
-        category: formCategory || 'General',
-        url: formUrl,
-        description: formDescription,
-        content: formContent
-      };
-      const res = await fetch('/api/items', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        setLoadError('');
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setLoadError(errorMessage(e, 'No se pudo cargar la base de datos.'));
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
       });
-      if(res.ok) {
-        showToast("🚀 Aporte guardado exitosamente.", "bg-emerald-400");
-        setAporteModalOpen(false);
-        setFormTitle(''); setFormCategory(''); setFormUrl(''); setFormDescription(''); setFormContent('');
-        fetchItems(); // refresh list
-      } else {
-        showToast("Error al guardar (¿Base de datos conectada?)", "bg-red-400");
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadToken]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
+    } catch {
+      // Modo privado o storage lleno: los favoritos simplemente no persisten.
+    }
+  }, [favorites]);
+
+  const copyText = useCallback(
+    async (text: string) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('✅ Copiado al portapapeles');
+      } catch {
+        showToast('No se pudo copiar', 'bg-red-400');
       }
-    } catch(e) {
-      showToast("Error de conexión con la base de datos", "bg-red-400");
+    },
+    [showToast],
+  );
+
+  const openEditor = useCallback((item: Item) => {
+    setDetail(null);
+    setForm({ initial: draftFromItem(item), editingId: item.id });
+  }, []);
+
+  const handlers: ItemHandlers = useMemo(
+    () => ({
+      isFavorite: id => favorites.includes(id),
+      onToggleFavorite: (e, id) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const wasFav = favorites.includes(id);
+        setFavorites(prev => (wasFav ? prev.filter(f => f !== id) : [...prev, id]));
+        showToast(wasFav ? 'Retirado de favoritos' : '⭐ Añadido a favoritos', wasFav ? 'bg-slate-400' : 'bg-yellow-400');
+      },
+      onEdit: openEditor,
+      onDelete: item => setPendingDelete(item),
+    }),
+    [favorites, showToast, openEditor],
+  );
+
+  const save = async (draft: ItemDraft) => {
+    if (!form) return;
+
+    if (form.editingId !== null) {
+      await updateItem(form.editingId, draft);
+      showToast('✅ Cambios guardados', 'bg-emerald-400');
+    } else {
+      await createItem(draft);
+      showToast('🚀 Aporte guardado', 'bg-emerald-400');
+    }
+
+    setForm(null);
+    reload();
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    const target = pendingDelete;
+
+    setDeleting(true);
+    try {
+      await requestDelete(target.id);
+      setItems(prev => prev.filter(item => item.id !== target.id));
+      setFavorites(prev => prev.filter(id => id !== target.id));
+      if (detail?.id === target.id) setDetail(null);
+      setPendingDelete(null);
+      showToast('🗑️ Aporte eliminado', 'bg-slate-500');
+    } catch (e) {
+      showToast(errorMessage(e, 'Error al eliminar'), 'bg-red-400');
+    } finally {
+      setDeleting(false);
     }
   };
 
-  const deleteItem = async (e: React.MouseEvent, id: number) => {
-    e.stopPropagation();
-    e.preventDefault();
-    if(window.confirm("¿Estás seguro de que deseas eliminar este aporte?")) {
-        try {
-            const res = await fetch(`/api/items/${id}`, { method: 'DELETE' });
-            if(res.ok) {
-              setItems(items.filter(item => item.id !== id));
-              showToast("🗑️ Aporte eliminado", "bg-slate-500");
-            }
-        } catch(e) {
-            showToast("Error al eliminar", "bg-red-500");
-        }
-    }
+  const launch = useCallback(
+    (item: Item) => {
+      const href = safeHref(item.url);
+      if (!href) {
+        setDetail(item);
+        return;
+      }
+      window.open(href, '_blank', 'noopener,noreferrer');
+      showToast(`Abriendo ${item.title}…`, 'bg-emerald-400');
+    },
+    [showToast],
+  );
+
+  const counts = useMemo(() => {
+    const base = { webapp: 0, prompt: 0, link: 0, note: 0, person: 0 } as Record<ItemType, number>;
+    for (const item of items) base[item.type] += 1;
+    return base;
+  }, [items]);
+
+  const tags = useMemo(() => collectTags(items), [items]);
+
+  const isFiltering = query.trim() !== '' || typeFilter !== null || tagFilter !== null || favoritesOnly;
+
+  const visible = useMemo(() => {
+    const favSet = new Set(favorites);
+    return items
+      .filter(
+        item =>
+          (typeFilter === null || item.type === typeFilter) &&
+          (tagFilter === null || item.tags.includes(tagFilter)) &&
+          (!favoritesOnly || favSet.has(item.id)) &&
+          matchesQuery(item, query),
+      )
+      .sort((a, b) => {
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+        const aFav = favSet.has(a.id);
+        const bFav = favSet.has(b.id);
+        if (aFav !== bFav) return aFav ? -1 : 1;
+        return b.id - a.id;
+      });
+  }, [items, favorites, typeFilter, tagFilter, favoritesOnly, query]);
+
+  const groupOf = useCallback((type: ItemType) => visible.filter(item => item.type === type), [visible]);
+
+  const renderCard = useCallback(
+    (item: Item) => {
+      const shared = { key: item.id, item, handlers };
+      switch (item.type) {
+        case 'webapp':
+          return <WebAppCard {...shared} onOpen={launch} onDetail={next => setDetail(next)} />;
+        case 'link':
+          return <LinkRow {...shared} onOpen={launch} onDetail={next => setDetail(next)} />;
+        case 'prompt':
+          return <PromptCard {...shared} onOpen={next => setDetail(next)} />;
+        case 'note':
+          return <NoteCard {...shared} onOpen={next => setDetail(next)} />;
+        case 'person':
+          return <PersonCard {...shared} onOpen={next => setDetail(next)} />;
+        default:
+          return null;
+      }
+    },
+    [handlers, launch],
+  );
+
+  const renderSection = useCallback(
+    (type: ItemType) => {
+      const group = groupOf(type);
+      if (isFiltering && group.length === 0) return null;
+
+      return (
+        <Section key={type} type={type} count={group.length}>
+          {group.length === 0 ? (
+            <p className="text-xs text-slate-500 py-2">{SECTION_EMPTY[type]}</p>
+          ) : (
+            <div className={SECTION_GRIDS[type]}>{group.map(renderCard)}</div>
+          )}
+        </Section>
+      );
+    },
+    [groupOf, isFiltering, renderCard],
+  );
+
+  const clearFilters = () => {
+    setQuery('');
+    setTypeFilter(null);
+    setTagFilter(null);
+    setFavoritesOnly(false);
   };
 
-  // Scroll to section smoothly
-  const scrollTo = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const sortItems = (arr: Item[]) => {
-    return [...arr].sort((a, b) => {
-      const aFav = favorites.includes(a.id);
-      const bFav = favorites.includes(b.id);
-      if (aFav && !bFav) return -1;
-      if (!aFav && bFav) return 1;
-      return 0;
-    });
-  };
-
-  const webapps = sortItems(items.filter(i => i.type === 'webapp'));
-  const prompts = sortItems(items.filter(i => i.type === 'prompt'));
-  const links = sortItems(items.filter(i => i.type === 'link'));
+  const people = useMemo(() => items.filter(item => item.type === 'person'), [items]);
 
   return (
     <div className="min-h-screen bg-surface-dark font-body-md text-slate-200 selection:bg-primary-container selection:text-surface-dark">
-      
-      {/* TopAppBar */}
       <header className="fixed top-0 w-full z-40 flex justify-between items-center px-6 py-3 h-16 bg-surface-dark border-b border-primary/10">
-        <div className="flex items-center gap-8">
-            <h1 className="text-xl font-bold text-primary-container tracking-tighter font-headline-md">Corporate Hub</h1>
-            <div className="hidden md:flex items-center bg-surface rounded px-3 py-1.5 border border-primary/10 w-96 transition-colors focus-within:border-primary/50">
-                <span className="material-symbols-outlined text-slate-400 text-lg mr-2">search</span>
-                <input className="bg-transparent border-none focus:ring-0 text-sm w-full text-slate-200 placeholder-slate-500 outline-none" placeholder="Buscar web apps, prompts, links..." type="text"/>
-            </div>
+        <div className="flex items-center gap-8 min-w-0">
+          <h1 className="text-xl font-bold text-primary-container tracking-tighter font-headline-md shrink-0">
+            Corporate Hub
+          </h1>
+          <div className="hidden md:flex items-center bg-surface rounded px-3 py-1.5 border border-primary/10 w-96 transition-colors focus-within:border-primary/50">
+            <span className="material-symbols-outlined text-slate-400 text-lg mr-2">search</span>
+            <input
+              className="bg-transparent border-none text-sm w-full text-slate-200 placeholder-slate-500 outline-none"
+              placeholder="Buscar apps, prompts, notas, personas…"
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+            />
+            {query && (
+              <button onClick={() => setQuery('')} className="text-slate-500 hover:text-white" aria-label="Limpiar búsqueda">
+                <span className="material-symbols-outlined text-base">close</span>
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-4">
-            <button onClick={() => setAporteModalOpen(true)} className="w-full bg-primary-container text-surface-dark font-bold py-1.5 px-4 rounded transition-all hover:bg-primary text-sm flex items-center gap-2">
-                <span className="material-symbols-outlined text-sm">add</span> Nuevo Aporte
-            </button>
-            <div className="h-8 w-8 rounded-full overflow-hidden border border-primary/20 bg-surface flex justify-center items-center">
-                <span className="material-symbols-outlined text-slate-400">person</span>
-            </div>
+          <button
+            onClick={() => setForm({ initial: emptyDraft(typeFilter ?? 'webapp'), editingId: null })}
+            className="bg-primary-container text-surface-dark font-bold py-1.5 px-4 rounded transition-all hover:bg-primary text-sm flex items-center gap-2 whitespace-nowrap"
+          >
+            <span className="material-symbols-outlined text-sm">add</span> Nuevo Aporte
+          </button>
+          <div className="h-8 w-8 rounded-full overflow-hidden border border-primary/20 bg-surface grid place-items-center shrink-0">
+            <span className="material-symbols-outlined text-slate-400">person</span>
+          </div>
         </div>
       </header>
 
-      {/* SideNavBar */}
-      <aside className="hidden md:flex flex-col h-screen pt-20 pb-6 w-64 bg-surface border-r border-primary/10 fixed left-0 top-0 z-30">
-          <nav className="flex-1 px-2 space-y-2 mt-4">
-              <p className="px-4 text-[10px] uppercase tracking-widest text-slate-500 font-label-sm mb-2">Directorio</p>
-              <button onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})} className="w-full flex items-center gap-3 bg-surface-dark text-primary-container border-l-2 border-primary-container px-4 py-2.5 transition-all text-sm font-medium">
-                  <span className="material-symbols-outlined">dashboard</span> <span>Dashboard</span>
-              </button>
-              <button onClick={() => scrollTo('webapps')} className="w-full flex items-center gap-3 text-slate-400 px-4 py-2.5 hover:bg-surface-dark/50 hover:text-primary transition-all text-sm">
-                  <span className="material-symbols-outlined">apps</span> <span>Web Apps & Tools</span>
-              </button>
-              <button onClick={() => scrollTo('prompts')} className="w-full flex items-center gap-3 text-slate-400 px-4 py-2.5 hover:bg-surface-dark/50 hover:text-primary transition-all text-sm">
-                  <span className="material-symbols-outlined">terminal</span> <span>Prompt Masters</span>
-              </button>
-              <button onClick={() => scrollTo('links')} className="w-full flex items-center gap-3 text-slate-400 px-4 py-2.5 hover:bg-surface-dark/50 hover:text-primary transition-all text-sm">
-                  <span className="material-symbols-outlined">folder_shared</span> <span>SharePoint & Links</span>
-              </button>
-              
-              <p className="px-4 text-[10px] uppercase tracking-widest text-slate-500 font-label-sm mt-8 mb-2">Colecciones</p>
-              <button className="w-full flex items-center gap-3 text-slate-400 px-4 py-2.5 hover:bg-surface-dark/50 hover:text-yellow-400 transition-all text-sm">
-                  <span className="material-symbols-outlined">star</span>
-                  <span>Mis Favoritos</span>
-              </button>
-          </nav>
-      </aside>
+      <Sidebar
+        counts={counts}
+        activeType={typeFilter}
+        onSelectType={setTypeFilter}
+        favoritesOnly={favoritesOnly}
+        onToggleFavoritesOnly={() => setFavoritesOnly(v => !v)}
+        favoritesCount={favorites.length}
+        tags={tags}
+        activeTag={tagFilter}
+        onSelectTag={setTagFilter}
+      />
 
-      {/* Main Content */}
       <main className="md:ml-64 pt-24 pb-12 min-h-screen">
-          <div className="max-w-[1440px] mx-auto px-8">
-              <div className="mb-10">
-                  <h3 className="text-slate-500 text-xs uppercase tracking-[0.2em] mb-1">Misión Control</h3>
-                  <h2 className="text-3xl font-headline-xl text-white">Ecosistema de Herramientas</h2>
-                  <div className="h-1 w-12 bg-primary mt-4"></div>
-              </div>
-
-              {isLoading ? (
-                  <div className="text-slate-400 animate-pulse flex items-center gap-2"><span className="material-symbols-outlined animate-spin">sync</span> Cargando base de datos...</div>
-              ) : items.length === 0 ? (
-                  <div className="p-10 border border-dashed border-primary/20 rounded text-center text-slate-500">
-                      <span className="material-symbols-outlined text-4xl mb-3 opacity-50">database</span>
-                      <p>La base de datos está vacía. ¡Agrega tu primer aporte!</p>
-                  </div>
-              ) : (
-                <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-                    
-                    {/* Left Column: Web Apps */}
-                    <div className="xl:col-span-7 space-y-8" id="webapps">
-                        <section className="bg-surface border border-primary/10 p-6 rounded-sm">
-                            <div className="flex justify-between items-center mb-6">
-                                <h3 className="text-xl font-headline-md text-primary flex items-center gap-2">
-                                    <span className="material-symbols-outlined">apps</span> Web Apps Internas
-                                </h3>
-                            </div>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {webapps.map(app => (
-                                    <div key={app.id} className="bg-surface-dark border border-primary/10 p-5 group hover:border-primary/40 hover:bg-primary/5 transition-all rounded-sm flex flex-col relative cursor-pointer" 
-                                        onClick={() => { window.open(app.url || '#', '_blank'); showToast(`Abriendo ${app.title}...`, 'bg-emerald-400'); }}>
-                                        <div className="absolute top-4 right-4 z-10 flex gap-2">
-                                            <button className="text-red-400/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all" onClick={(e) => deleteItem(e, app.id)} title="Eliminar">
-                                                <span className="material-symbols-outlined text-xl">delete</span>
-                                            </button>
-                                            <button className="text-slate-600 hover:text-primary transition-colors" onClick={(e) => openAppDetail(e, app.title, 'usuario@hub.corp', '***')} title="Ver Credenciales">
-                                                <span className="material-symbols-outlined text-xl">vpn_key</span>
-                                            </button>
-                                            <button className={`transition-colors ${favorites.includes(app.id) ? 'text-yellow-400' : 'text-slate-600 hover:text-yellow-400'}`} onClick={(e) => toggleFavorite(e, app.id)} title="Favorito">
-                                                <span className="material-symbols-outlined text-xl" style={favorites.includes(app.id) ? { fontVariationSettings: "'FILL' 1" } : {}}>star</span>
-                                            </button>
-                                        </div>
-                                        <div className="flex justify-between items-start mb-4">
-                                            <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
-                                                <span className="material-symbols-outlined">open_in_new</span>
-                                            </div>
-                                            <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border border-emerald-500/20 mr-24">{app.category}</span>
-                                        </div>
-                                        <h4 className="text-lg text-white font-medium group-hover:text-primary transition-colors">{app.title}</h4>
-                                        
-                                        <div className="mt-4 border-t border-primary/10 pt-3 flex justify-between items-center opacity-70 group-hover:opacity-100 transition-opacity">
-                                            <span className="text-[10px] text-primary font-bold uppercase tracking-widest flex items-center gap-1">Lanzar App</span>
-                                            <span className="material-symbols-outlined text-primary text-sm">rocket_launch</span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </section>
-                    </div>
-
-                    {/* Right Column: Prompts & Links */}
-                    <div className="xl:col-span-5 space-y-8">
-                        {/* Prompts Section */}
-                        <section id="prompts" className="bg-surface border border-primary/10 p-6 rounded-sm">
-                            <div className="flex justify-between items-center mb-6">
-                                <h3 className="text-xl font-headline-md text-primary flex items-center gap-2">
-                                    <span className="material-symbols-outlined">terminal</span> Prompt Masters
-                                </h3>
-                            </div>
-                            <div className="space-y-4">
-                                {prompts.map(prompt => (
-                                    <div key={prompt.id} className="bg-surface-dark border border-primary/10 p-4 group hover:border-accent-antigravity/40 transition-all rounded-sm relative cursor-pointer" 
-                                        onClick={() => openPromptDetail(prompt.title, prompt.category, 'bg-accent-antigravity/10 text-accent-antigravity border-accent-antigravity/20', prompt.description || 'Sin descripción guardada.', prompt.content)}>
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div className="flex items-center gap-2">
-                                                <span className="bg-accent-antigravity/10 text-accent-antigravity px-2 py-0.5 rounded text-[10px] font-bold tracking-wider border border-accent-antigravity/20 flex items-center gap-1">
-                                                    <span className="material-symbols-outlined text-[12px]">auto_awesome</span> {prompt.category}
-                                                </span>
-                                                <span className="text-xs text-slate-300 font-bold truncate max-w-[120px]">{prompt.title}</span>
-                                            </div>
-                                            <div className="flex items-center gap-2 z-10 relative">
-                                                <button className="text-red-400/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all" onClick={(e) => deleteItem(e, prompt.id)} title="Eliminar"><span className="material-symbols-outlined text-lg">delete</span></button>
-                                                <button className={`transition-colors ${favorites.includes(prompt.id) ? 'text-yellow-400' : 'text-slate-600 hover:text-yellow-400'}`} onClick={(e) => toggleFavorite(e, prompt.id)}><span className="material-symbols-outlined text-lg" style={favorites.includes(prompt.id) ? { fontVariationSettings: "'FILL' 1" } : {}}>star</span></button>
-                                                <button className="text-slate-500 hover:text-white transition-colors bg-surface border border-primary/10 rounded px-2 py-1 flex items-center gap-1 text-[10px] uppercase font-bold" 
-                                                        onClick={(e) => { e.stopPropagation(); copyText(prompt.content); }}><span className="material-symbols-outlined text-sm">content_copy</span> Copiar</button>
-                                            </div>
-                                        </div>
-                                        <div className="bg-black/30 p-3 rounded border border-white/5 mt-3 h-20 overflow-hidden relative fade-bottom">
-                                            <code className="text-xs text-slate-400 font-mono whitespace-pre-wrap leading-relaxed">{prompt.content}</code>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </section>
-
-                        {/* SharePoint & Links Section */}
-                        <section id="links" className="bg-surface border border-primary/10 p-6 rounded-sm">
-                            <div className="flex justify-between items-center mb-5">
-                                <h3 className="text-xl font-headline-md text-primary flex items-center gap-2">
-                                    <span className="material-symbols-outlined">folder_shared</span> SharePoint & Docs
-                                </h3>
-                            </div>
-                            <div className="space-y-2">
-                                {links.map(link => (
-                                    <a key={link.id} href={link.url} target="_blank" rel="noreferrer" onClick={(e) => { if(link.url==='#') e.preventDefault(); showToast(`Abriendo ${link.title}...`, 'bg-blue-400'); }} className="flex items-center justify-between p-3 bg-surface-dark hover:bg-primary/10 border border-transparent hover:border-primary/30 transition-all rounded-sm group relative">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded bg-blue-500/10 flex items-center justify-center text-blue-400">
-                                                <span className="material-symbols-outlined text-lg">link</span>
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-bold text-slate-200 group-hover:text-primary transition-colors">{link.title}</p>
-                                                <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">{link.category}</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button className="text-red-400/50 hover:text-red-400 transition-all" onClick={(e) => deleteItem(e, link.id)} title="Eliminar"><span className="material-symbols-outlined text-sm">delete</span></button>
-                                            <button className={`transition-colors ${favorites.includes(link.id) ? 'text-yellow-400' : 'text-slate-500 hover:text-yellow-400'}`} onClick={(e) => toggleFavorite(e, link.id)}><span className="material-symbols-outlined text-sm" style={favorites.includes(link.id) ? { fontVariationSettings: "'FILL' 1" } : {}}>star</span></button>
-                                            <span className="material-symbols-outlined text-slate-400 text-sm">open_in_new</span>
-                                        </div>
-                                    </a>
-                                ))}
-                            </div>
-                        </section>
-                    </div>
-                </div>
-              )}
+        <div className="max-w-[1440px] mx-auto px-8">
+          <div className="mb-8">
+            <h3 className="text-slate-500 text-xs uppercase tracking-[0.2em] mb-1">Misión Control</h3>
+            <h2 className="text-3xl font-headline-xl text-white">Ecosistema de Herramientas</h2>
+            <div className="h-1 w-12 bg-primary mt-4"></div>
           </div>
+
+          {isFiltering && (
+            <div className="mb-6 flex items-center gap-2 flex-wrap text-xs">
+              <span className="text-slate-500">
+                {visible.length} {visible.length === 1 ? 'resultado' : 'resultados'}
+              </span>
+              {query && <span className="bg-surface border border-primary/20 px-2 py-1 rounded-sm text-primary">“{query}”</span>}
+              {typeFilter && (
+                <span className="bg-surface border border-primary/20 px-2 py-1 rounded-sm text-primary">
+                  {SECTION_TITLES[typeFilter]}
+                </span>
+              )}
+              {tagFilter && (
+                <span className="bg-surface border border-primary/20 px-2 py-1 rounded-sm text-primary">#{tagFilter}</span>
+              )}
+              {favoritesOnly && (
+                <span className="bg-surface border border-yellow-400/30 px-2 py-1 rounded-sm text-yellow-400">Favoritos</span>
+              )}
+              <button onClick={clearFilters} className="text-slate-500 hover:text-white underline">
+                Limpiar
+              </button>
+            </div>
+          )}
+
+          {isLoading ? (
+            <div className="text-slate-400 animate-pulse flex items-center gap-2">
+              <span className="material-symbols-outlined animate-spin">sync</span> Cargando base de datos…
+            </div>
+          ) : loadError ? (
+            <div className="p-8 border border-red-400/30 bg-red-400/5 rounded text-center">
+              <span className="material-symbols-outlined text-4xl mb-3 text-red-400/70">cloud_off</span>
+              <p className="text-slate-300 mb-1">No se pudo cargar la base de datos.</p>
+              <p className="text-xs text-slate-500 font-mono mb-4">{loadError}</p>
+              <button
+                onClick={() => {
+                  setIsLoading(true);
+                  reload();
+                }}
+                className="bg-primary text-surface-dark font-bold px-4 py-2 rounded-sm text-sm hover:bg-white transition-colors"
+              >
+                Reintentar
+              </button>
+            </div>
+          ) : items.length === 0 ? (
+            <div className="p-10 border border-dashed border-primary/20 rounded text-center text-slate-500">
+              <span className="material-symbols-outlined text-4xl mb-3 opacity-50">database</span>
+              <p>La base de datos está vacía. ¡Agrega tu primer aporte!</p>
+            </div>
+          ) : isFiltering ? (
+            visible.length === 0 ? (
+              <div className="p-10 border border-dashed border-primary/20 rounded text-center text-slate-500">
+                <span className="material-symbols-outlined text-4xl mb-3 opacity-50">search_off</span>
+                <p>Nada coincide con ese filtro.</p>
+              </div>
+            ) : (
+              <div className="space-y-6">{ITEM_TYPES.map(renderSection)}</div>
+            )
+          ) : (
+            <>
+              <BirthdayStrip people={people} onOpen={next => setDetail(next)} />
+
+              <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+                <div className="xl:col-span-7 space-y-6">
+                  {renderSection('webapp')}
+                  {renderSection('note')}
+                </div>
+                <div className="xl:col-span-5 space-y-6">
+                  {renderSection('prompt')}
+                  {renderSection('person')}
+                  {renderSection('link')}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </main>
 
-      {/* MODAL: App Credentials Vault */}
-      {appDetailModalOpen && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setAppDetailModalOpen(false)}></div>
-            <div className="relative w-full max-w-sm bg-surface border border-primary/20 rounded-sm shadow-2xl flex flex-col m-4 animate-in fade-in zoom-in duration-200">
-                <div className="flex justify-between items-center p-5 border-b border-primary/10 bg-surface-dark rounded-t-sm">
-                    <h3 className="text-xl font-headline-md text-white">{selectedApp.title}</h3>
-                    <button className="text-slate-400 hover:text-white transition-colors bg-surface p-1 rounded border border-primary/10" onClick={() => setAppDetailModalOpen(false)}><span className="material-symbols-outlined">close</span></button>
-                </div>
-                <div className="p-6">
-                    <div className="bg-[#04080c] border border-primary/20 p-5 rounded-sm relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-2 opacity-10 pointer-events-none"><span className="material-symbols-outlined text-6xl">admin_panel_settings</span></div>
-                        <label className="block text-xs font-label-sm text-primary uppercase tracking-wider mb-4 flex items-center gap-2"><span className="material-symbols-outlined text-sm">vpn_key</span> Bóveda de Credenciales</label>
-                        <div className="mb-4">
-                            <span className="text-[10px] text-slate-500 uppercase font-bold block mb-2">Usuario / Email</span>
-                            <div className="flex items-center gap-2">
-                                <code className="text-[13px] text-white bg-surface p-2 rounded w-full border border-white/5 text-center">{selectedApp.user}</code>
-                                <button onClick={() => copyText(selectedApp.user)} className="text-slate-500 hover:text-primary transition-colors bg-surface p-2 rounded border border-white/5"><span className="material-symbols-outlined text-sm">content_copy</span></button>
-                            </div>
-                        </div>
-                        <div>
-                            <span className="text-[10px] text-slate-500 uppercase font-bold block mb-2">Contraseña</span>
-                            <div className="flex items-center gap-2">
-                                <code className="text-[13px] text-white bg-surface p-2 rounded w-full border border-white/5 blur-sm hover:blur-none transition-all cursor-pointer text-center">{selectedApp.pass}</code>
-                                <button onClick={() => copyText(selectedApp.pass)} className="text-slate-500 hover:text-primary transition-colors bg-surface p-2 rounded border border-white/5"><span className="material-symbols-outlined text-sm">content_copy</span></button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+      {form && (
+        <ItemFormModal
+          key={form.editingId ?? 'new'}
+          initial={form.initial}
+          editingId={form.editingId}
+          onClose={() => setForm(null)}
+          onSave={save}
+        />
       )}
 
-      {/* MODAL: Prompt Detail */}
-      {promptDetailModalOpen && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setPromptDetailModalOpen(false)}></div>
-            <div className="relative w-full max-w-3xl bg-surface border border-primary/20 rounded-sm shadow-2xl flex flex-col max-h-[90vh] m-4 animate-in fade-in zoom-in duration-200">
-                <div className="flex justify-between items-center p-6 border-b border-primary/10 bg-surface-dark rounded-t-sm">
-                    <div>
-                        <h3 className="text-2xl font-headline-md text-white mb-2">{selectedPrompt.title}</h3>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider border ${selectedPrompt.aiClass}`}>{selectedPrompt.aiTarget}</span>
-                    </div>
-                    <button className="text-slate-400 hover:text-white bg-surface p-1 rounded border border-primary/10" onClick={() => setPromptDetailModalOpen(false)}><span className="material-symbols-outlined">close</span></button>
-                </div>
-                <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-6">
-                    <div>
-                        <label className="text-xs font-label-sm text-slate-400 uppercase tracking-wider mb-2 block">¿Qué hace este prompt?</label>
-                        <p className="text-sm text-slate-200 leading-relaxed bg-surface-dark p-3 rounded-sm border-l-2 border-primary">{selectedPrompt.description}</p>
-                    </div>
-                    <div>
-                        <div className="flex justify-between items-center mb-3">
-                            <label className="text-xs font-label-sm text-slate-400 uppercase tracking-wider flex items-center gap-2"><span className="material-symbols-outlined text-sm">terminal</span> Prompt Maestro</label>
-                            <button className="text-slate-300 hover:text-white hover:bg-primary/20 bg-surface border border-primary/20 rounded px-4 py-2 flex items-center gap-2 text-xs uppercase font-bold" onClick={() => copyText(selectedPrompt.content)}>
-                                <span className="material-symbols-outlined text-base">content_copy</span> Copiar Código
-                            </button>
-                        </div>
-                        <div className="bg-[#04080c] p-5 rounded border border-white/5">
-                            <code className="text-[13px] text-[#bac8da] font-mono whitespace-pre-wrap leading-relaxed block">{selectedPrompt.content}</code>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+      {detail && (
+        <DetailModal item={detail} onClose={() => setDetail(null)} onEdit={openEditor} onCopy={copyText} />
       )}
 
-      {/* MODAL: Nuevo Aporte */}
-      {aporteModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setAporteModalOpen(false)}></div>
-            <div className="relative w-full max-w-lg bg-surface border border-primary/20 rounded-sm shadow-2xl flex flex-col max-h-[90vh] m-4 animate-in fade-in slide-in-from-bottom-10 duration-200">
-                <div className="flex justify-between items-center p-5 border-b border-primary/10">
-                    <h3 className="text-xl font-headline-md text-white flex items-center gap-2"><span className="material-symbols-outlined text-primary">add_circle</span> Nuevo Aporte</h3>
-                    <button className="text-slate-400 hover:text-white transition-colors" onClick={() => setAporteModalOpen(false)}><span className="material-symbols-outlined">close</span></button>
-                </div>
-                <div className="p-6 overflow-y-auto">
-                    <div className="space-y-6">
-                        <div>
-                            <label className="block text-xs font-label-sm text-slate-400 uppercase tracking-wider mb-2">¿Qué deseas agregar?</label>
-                            <div className="grid grid-cols-3 gap-1 bg-surface-dark p-1 border border-primary/10 rounded-sm">
-                                <button className={`font-medium py-1.5 rounded-sm text-xs transition-all ${aporteType === 'webapp' ? 'bg-surface border border-primary/20 text-primary' : 'text-slate-400 hover:text-white'}`} onClick={() => setAporteType('webapp')}>Web App</button>
-                                <button className={`font-medium py-1.5 rounded-sm text-xs transition-all ${aporteType === 'prompt' ? 'bg-surface border border-primary/20 text-primary' : 'text-slate-400 hover:text-white'}`} onClick={() => setAporteType('prompt')}>Prompt</button>
-                                <button className={`font-medium py-1.5 rounded-sm text-xs transition-all ${aporteType === 'link' ? 'bg-surface border border-primary/20 text-primary' : 'text-slate-400 hover:text-white'}`} onClick={() => setAporteType('link')}>Link/Doc</button>
-                            </div>
-                        </div>
-                        
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-label-sm text-slate-400 uppercase tracking-wider mb-2">Título / Nombre</label>
-                                <input type="text" value={formTitle} onChange={e=>setFormTitle(e.target.value)} className="w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors" placeholder="Ej. Yield Manager 3D" />
-                            </div>
-                            
-                            <div>
-                                <label className="block text-xs font-label-sm text-slate-400 uppercase tracking-wider mb-2">
-                                    {aporteType === 'webapp' ? 'Categoría / Departamento' : aporteType === 'prompt' ? 'IA Recomendada (Ej. Claude)' : 'Ubicación (Ej. SharePoint)'}
-                                </label>
-                                {aporteType === 'webapp' ? (
-                                    <select value={formCategory} onChange={e=>setFormCategory(e.target.value)} className="w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors appearance-none">
-                                        <option value="Producción">Producción</option><option value="Fabricación">Fabricación</option><option value="Retail">Retail</option><option value="General">General</option>
-                                    </select>
-                                ) : (
-                                    <input type="text" value={formCategory} onChange={e=>setFormCategory(e.target.value)} className="w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors" placeholder="Ej. Claude 3.5 Sonnet / SharePoint" />
-                                )}
-                            </div>
-
-                            {aporteType !== 'prompt' && (
-                                <div>
-                                    <label className="block text-xs font-label-sm text-slate-400 uppercase tracking-wider mb-2">URL (Enlace)</label>
-                                    <input type="text" value={formUrl} onChange={e=>setFormUrl(e.target.value)} className="w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors font-mono" placeholder="https://" />
-                                </div>
-                            )}
-
-                            {(aporteType === 'webapp' || aporteType === 'prompt') && (
-                                <div>
-                                    <label className="block text-xs font-label-sm text-slate-400 uppercase tracking-wider mb-2">
-                                        Descripción Corta / ¿Qué hace?
-                                    </label>
-                                    <textarea value={formDescription} onChange={e=>setFormDescription(e.target.value)} className={`w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors ${aporteType === 'webapp' ? 'h-24' : 'h-16'} resize-none`} placeholder="Escribe aquí de qué trata..."></textarea>
-                                </div>
-                            )}
-
-                            {aporteType === 'prompt' && (
-                                <div>
-                                    <label className="block text-xs font-label-sm text-slate-400 uppercase tracking-wider mb-2">
-                                        Contenido del Prompt
-                                    </label>
-                                    <textarea value={formContent} onChange={e=>setFormContent(e.target.value)} className="w-full bg-surface-dark border border-primary/20 rounded-sm p-2.5 text-white text-sm focus:border-primary focus:outline-none transition-colors h-32 resize-none font-mono" placeholder="Actúa como un experto..."></textarea>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-                <div className="p-5 border-t border-primary/10 flex justify-end gap-3 bg-surface-dark rounded-b-sm">
-                    <button className="text-slate-400 hover:text-white px-4 py-2 text-sm transition-colors font-medium" onClick={() => setAporteModalOpen(false)}>Cancelar</button>
-                    <button className="bg-primary text-surface-dark font-bold px-6 py-2 rounded-sm text-sm hover:bg-white transition-colors" onClick={saveAporte}>Guardar</button>
-                </div>
-            </div>
-        </div>
+      {pendingDelete && (
+        <Modal
+          title="¿Eliminar este aporte?"
+          size="sm"
+          onClose={() => setPendingDelete(null)}
+          footer={
+            <>
+              <button
+                className="text-slate-400 hover:text-white px-4 py-2 text-sm transition-colors font-medium"
+                onClick={() => setPendingDelete(null)}
+                disabled={deleting}
+              >
+                Cancelar
+              </button>
+              <button
+                className="bg-red-500 text-white font-bold px-6 py-2 rounded-sm text-sm hover:bg-red-400 transition-colors disabled:opacity-50"
+                onClick={confirmDelete}
+                disabled={deleting}
+              >
+                {deleting ? 'Eliminando…' : 'Eliminar'}
+              </button>
+            </>
+          }
+        >
+          <p className="text-sm text-slate-300">
+            Se va a borrar <strong className="text-white">{pendingDelete.title}</strong> de forma permanente. Esta acción
+            no se puede deshacer.
+          </p>
+        </Modal>
       )}
 
-      {/* Toast Notification */}
-      {isToastVisible && (
-        <div className={`fixed z-[4000] bottom-[30px] left-1/2 transform -translate-x-1/2 font-bold shadow-lg text-surface-dark text-center rounded-sm p-3 transition-opacity duration-300 ${toastColor} opacity-100`}>
-            {toastMessage}
-        </div>
-      )}
-
-      {/* DI Radio Mini Player */}
-      <MusicPlayer />
+      <Toast toast={toast} />
     </div>
   );
 }

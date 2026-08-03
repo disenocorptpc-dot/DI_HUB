@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Config local de Wrangler. NO se commitea: en Cloudflare Pages un wrangler.toml
+# con bindings reemplaza los del dashboard, y un database_id equivocado rompe
+# produccion. Ver README para el contenido sugerido.
+wrangler.toml
+wrangler.jsonc
+.wrangler
+
