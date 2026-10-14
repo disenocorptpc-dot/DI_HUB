@@ -3,6 +3,8 @@ import type { Item } from '../types';
 export type ItemHandlers = {
   isFavorite: (id: number) => boolean;
   onToggleFavorite: (e: React.MouseEvent, id: number) => void;
+  onTogglePin: (e: React.MouseEvent, item: Item) => void;
+  onCopy: (text: string, label?: string) => void;
   onEdit: (item: Item) => void;
   onDelete: (item: Item) => void;
 };
@@ -15,12 +17,13 @@ type Props = {
 };
 
 /**
- * Botones de favorito / editar / borrar. El de favorito siempre se ve cuando está
- * activo; los otros dos aparecen al hacer hover sobre el contenedor `group`.
+ * Botones de fijar / favorito / editar / borrar. Fijado y favorito siempre se ven
+ * cuando están activos; los otros aparecen al hacer hover sobre el contenedor `group`.
  */
 export default function ItemActions({ item, handlers, size = 'sm' }: Props) {
   const textSize = size === 'sm' ? 'text-[16px]' : 'text-lg';
   const fav = handlers.isFavorite(item.id);
+  const pinned = item.pinned;
 
   const stop = (fn: () => void) => (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -49,7 +52,29 @@ export default function ItemActions({ item, handlers, size = 'sm' }: Props) {
       </button>
 
       <button
-        className={`transition-colors p-1 ${fav ? 'text-yellow-400' : 'text-slate-600 hover:text-yellow-400 opacity-0 group-hover:opacity-100 focus:opacity-100'}`}
+        className={`transition-colors p-1 ${
+          pinned
+            ? 'text-primary'
+            : 'text-slate-600 hover:text-primary opacity-0 group-hover:opacity-100 focus:opacity-100'
+        }`}
+        onClick={e => handlers.onTogglePin(e, item)}
+        title={pinned ? 'Desfijar de arriba' : 'Fijar arriba en su sección'}
+        aria-label={pinned ? `Desfijar ${item.title}` : `Fijar ${item.title}`}
+      >
+        <span
+          className={`material-symbols-outlined ${textSize}`}
+          style={pinned ? { fontVariationSettings: "'FILL' 1" } : undefined}
+        >
+          keep
+        </span>
+      </button>
+
+      <button
+        className={`transition-colors p-1 ${
+          fav
+            ? 'text-yellow-400'
+            : 'text-slate-600 hover:text-yellow-400 opacity-0 group-hover:opacity-100 focus:opacity-100'
+        }`}
         onClick={e => handlers.onToggleFavorite(e, item.id)}
         title={fav ? 'Quitar de favoritos' : 'Añadir a favoritos'}
         aria-label={fav ? `Quitar ${item.title} de favoritos` : `Añadir ${item.title} a favoritos`}

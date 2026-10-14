@@ -98,4 +98,13 @@ export const draftFromItem = (item: Item): ItemDraft => ({
 /** Gestores de contraseñas sugeridos para el campo `vault`. */
 export const VAULTS = ['1Password', 'Bitwarden', 'Keeper', 'LastPass', 'Azure Key Vault', 'Otro'];
 
-export const WEBAPP_CATEGORIES = ['Producción', 'Fabricación', 'Retail', 'Marketing', 'Administración', 'General'];
+export const WEBAPP_CATEGORIES = ['Producción', 'Fabricación', 'Diseño 3D', 'Retail', 'Marketing', 'Administración', 'General'];
+
+export const SUGGESTED_CATEGORIES: Record<ItemType, string[]> = {
+  webapp: WEBAPP_CATEGORIES,
+  prompt: ['Antigravity', 'Claude', 'ChatGPT', 'Blender / 3D', 'Código / UI', 'Redacción'],
+  link: ['SharePoint', 'PULSE / Taller', 'Google Drive', 'Figma', 'Manuales / Docs', 'Proveedores'],
+  note: ['Ideas', 'Juntas / Acuerdos', 'Procesos', 'Pendientes', ' Taller / ODP', 'Referencia'].map(s => s.trim()),
+  person: ['Diseño Industrial', 'Coordinación 3D', 'Taller / Producción', 'Dirección', 'Externo / Proveedor'],
+};
+

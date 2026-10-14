@@ -8,7 +8,7 @@ import Modal from './components/Modal';
 import Sidebar from './components/Sidebar';
 import Toast, { type ToastState } from './components/Toast';
 import { createItem, deleteItem as requestDelete, errorMessage, fetchItems, safeHref, updateItem } from './lib/api';
-import { collectTags, matchesQuery } from './lib/search';
+import { collectCategories, collectTags, domainFromUrl, inferFromUrl, isUnclassified, matchesQuery } from './lib/search';
 import {
   ITEM_TYPES,
   TYPE_ICONS,
@@ -26,7 +26,6 @@ const readFavorites = (): number[] => {
     const parsed = JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? '[]');
     return Array.isArray(parsed) ? parsed.filter((n): n is number => typeof n === 'number') : [];
   } catch {
-    // Storage corrupto no debe dejar la app en blanco.
     return [];
   }
 };
@@ -35,7 +34,7 @@ const SECTION_TITLES: Record<ItemType, string> = {
   webapp: 'Web Apps Internas',
   prompt: 'Prompt Masters',
   link: 'SharePoint & Docs',
-  note: 'Notas',
+  note: 'Notas & Acuerdos',
   person: 'Equipo',
 };
 
@@ -49,9 +48,9 @@ const SECTION_EMPTY: Record<ItemType, string> = {
 
 const SECTION_GRIDS: Record<ItemType, string> = {
   webapp: 'grid grid-cols-1 lg:grid-cols-2 gap-2',
-  prompt: 'space-y-3',
-  link: 'space-y-2',
-  note: 'grid grid-cols-1 lg:grid-cols-2 gap-2',
+  prompt: 'space-y-2.5',
+  link: 'space-y-1.5',
+  note: 'grid grid-cols-1 lg:grid-cols-2 gap-2.5',
   person: 'space-y-2',
 };
 
@@ -63,25 +62,74 @@ const ADD_LABELS: Record<ItemType, string> = {
   person: 'Agregar persona',
 };
 
+type SortMode = 'recent' | 'alpha' | 'updated';
+
+const UNFILED_KEY = '__sin_carpeta__';
+
 function Section({
   type,
-  count,
+  items,
+  selectedCategory,
+  onSelectCategory,
+  groupByCategory,
   onAdd,
-  children,
+  renderCard,
 }: {
   type: ItemType;
-  count: number;
+  items: Item[];
+  selectedCategory: string | null;
+  onSelectCategory: (cat: string | null) => void;
+  groupByCategory: boolean;
   onAdd: (type: ItemType) => void;
-  children: React.ReactNode;
+  renderCard: (item: Item) => React.ReactNode;
 }) {
+  const categoryBreakdown = useMemo(() => {
+    const map = new Map<string, number>();
+    let unfiled = 0;
+    for (const item of items) {
+      const cat = item.category.trim();
+      if (cat) {
+        map.set(cat, (map.get(cat) ?? 0) + 1);
+      } else {
+        unfiled += 1;
+      }
+    }
+    const list = [...map.entries()]
+      .map(([name, count]) => ({ key: name, label: name, count }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+    if (unfiled > 0 && list.length > 0) {
+      list.push({ key: UNFILED_KEY, label: 'Sin carpeta', count: unfiled });
+    }
+    return list;
+  }, [items]);
+
+  const filteredItems = useMemo(() => {
+    if (!selectedCategory) return items;
+    if (selectedCategory === UNFILED_KEY) return items.filter(i => !i.category.trim());
+    return items.filter(i => i.category.trim() === selectedCategory);
+  }, [items, selectedCategory]);
+
+  const groupedBlocks = useMemo(() => {
+    if (!groupByCategory || selectedCategory) return null;
+    const map = new Map<string, Item[]>();
+    for (const item of filteredItems) {
+      const key = item.category.trim() || 'General / Sin carpeta';
+      const arr = map.get(key) ?? [];
+      arr.push(item);
+      map.set(key, arr);
+    }
+    if (map.size <= 1) return null;
+    return [...map.entries()];
+  }, [filteredItems, groupByCategory, selectedCategory]);
+
   return (
     <section id={type} className="bg-surface border border-primary/10 p-5 rounded-sm">
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-3">
         <h3 className="text-lg font-headline-md text-primary flex items-center gap-2">
           <span className="material-symbols-outlined">{TYPE_ICONS[type]}</span> {SECTION_TITLES[type]}
         </h3>
         <div className="flex items-center gap-3">
-          {count > 0 && <span className="text-xs text-slate-600 tabular-nums">{count}</span>}
+          {items.length > 0 && <span className="text-xs text-slate-500 tabular-nums">{items.length}</span>}
           <button
             onClick={() => onAdd(type)}
             title={ADD_LABELS[type]}
@@ -92,7 +140,61 @@ function Section({
           </button>
         </div>
       </div>
-      {children}
+
+      {/* Sub-pestañas automáticas por carpeta cuando hay más de una */}
+      {categoryBreakdown.length > 1 && (
+        <div className="flex items-center gap-1.5 flex-wrap mb-3 pb-2 border-b border-primary/10">
+          <button
+            onClick={() => onSelectCategory(null)}
+            className={`text-[10px] px-2 py-0.5 rounded-sm border transition-colors ${
+              selectedCategory === null
+                ? 'bg-primary text-surface-dark border-primary font-bold'
+                : 'bg-surface-dark text-slate-400 border-primary/10 hover:text-white'
+            }`}
+          >
+            Todas ({items.length})
+          </button>
+          {categoryBreakdown.map(cat => (
+            <button
+              key={cat.key}
+              onClick={() => onSelectCategory(selectedCategory === cat.key ? null : cat.key)}
+              className={`text-[10px] px-2 py-0.5 rounded-sm border transition-colors ${
+                selectedCategory === cat.key
+                  ? 'bg-primary text-surface-dark border-primary font-bold'
+                  : 'bg-surface-dark text-slate-400 border-primary/10 hover:text-white'
+              }`}
+            >
+              {cat.label} <span className="opacity-60">{cat.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {filteredItems.length === 0 ? (
+        <button
+          onClick={() => onAdd(type)}
+          className="w-full text-left text-xs text-slate-500 py-3 px-3 border border-dashed border-primary/20 rounded-sm hover:border-primary/40 hover:text-slate-400 transition-colors flex items-center gap-2"
+        >
+          <span className="material-symbols-outlined text-[16px] text-primary/50">add</span>
+          {SECTION_EMPTY[type]}
+        </button>
+      ) : groupedBlocks ? (
+        <div className="space-y-4">
+          {groupedBlocks.map(([folderName, folderItems]) => (
+            <div key={folderName} className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[14px] text-primary/60">folder</span>
+                <span className="text-[11px] uppercase tracking-wider font-bold text-slate-400">{folderName}</span>
+                <span className="text-[10px] text-slate-600">({folderItems.length})</span>
+                <div className="flex-1 border-b border-primary/10" />
+              </div>
+              <div className={SECTION_GRIDS[type]}>{folderItems.map(renderCard)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className={SECTION_GRIDS[type]}>{filteredItems.map(renderCard)}</div>
+      )}
     </section>
   );
 }
@@ -104,13 +206,30 @@ export default function App() {
 
   const [toast, setToast] = useState<ToastState>(null);
   const toastTimer = useRef<number | undefined>(undefined);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const [favorites, setFavorites] = useState<number[]>(readFavorites);
 
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<ItemType | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [pinnedOnly, setPinnedOnly] = useState(false);
+  const [unclassifiedOnly, setUnclassifiedOnly] = useState(false);
+
+  // Sub-filtro de carpeta local por sección
+  const [sectionCategory, setSectionCategory] = useState<Partial<Record<ItemType, string | null>>>({});
+
+  // Controles de visualización
+  const [groupByCategory, setGroupByCategory] = useState(true);
+  const [compactMode, setCompactMode] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>('recent');
+
+  // Barra de captura rápida ("Brain Dump" en 1 paso)
+  const [quickText, setQuickText] = useState('');
+  const [quickType, setQuickType] = useState<ItemType | 'auto'>('auto');
+  const [quickSaving, setQuickSaving] = useState(false);
 
   const [form, setForm] = useState<{ initial: ItemDraft; editingId: number | null } | null>(null);
   const [detail, setDetail] = useState<Item | null>(null);
@@ -125,8 +244,18 @@ export default function App() {
 
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
-  // Incrementar el token vuelve a disparar la carga. Los setState viven dentro de
-  // los callbacks de la promesa, no en el cuerpo del efecto.
+  // Atajo Ctrl+K o "/" para ir directo al buscador
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const [reloadToken, setReloadToken] = useState(0);
   const reload = useCallback(() => setReloadToken(token => token + 1), []);
 
@@ -155,15 +284,15 @@ export default function App() {
     try {
       localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
     } catch {
-      // Modo privado o storage lleno: los favoritos simplemente no persisten.
+      // Ignorar si storage está lleno
     }
   }, [favorites]);
 
   const copyText = useCallback(
-    async (text: string) => {
+    async (text: string, label = 'Copiado al portapapeles') => {
       try {
         await navigator.clipboard.writeText(text);
-        showToast('✅ Copiado al portapapeles');
+        showToast(`✅ ${label}`);
       } catch {
         showToast('No se pudo copiar', 'bg-red-400');
       }
@@ -176,10 +305,27 @@ export default function App() {
     setForm({ initial: draftFromItem(item), editingId: item.id });
   }, []);
 
-  /** Abre el formulario en blanco con el tipo ya elegido. */
   const startCreate = useCallback((type: ItemType) => {
     setForm({ initial: emptyDraft(type), editingId: null });
   }, []);
+
+  const togglePin = useCallback(
+    async (e: React.MouseEvent, item: Item) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const nextPinned = !item.pinned;
+      // Actualización optimista inmediata
+      setItems(prev => prev.map(i => (i.id === item.id ? { ...i, pinned: nextPinned } : i)));
+      try {
+        await updateItem(item.id, { ...draftFromItem(item), pinned: nextPinned });
+        showToast(nextPinned ? '📌 Fijado arriba en su sección' : 'Desfijado', nextPinned ? 'bg-primary' : 'bg-slate-400');
+      } catch (err) {
+        setItems(prev => prev.map(i => (i.id === item.id ? { ...i, pinned: item.pinned } : i)));
+        showToast(errorMessage(err, 'No se pudo actualizar el pin'), 'bg-red-400');
+      }
+    },
+    [showToast],
+  );
 
   const handlers: ItemHandlers = useMemo(
     () => ({
@@ -191,10 +337,12 @@ export default function App() {
         setFavorites(prev => (wasFav ? prev.filter(f => f !== id) : [...prev, id]));
         showToast(wasFav ? 'Retirado de favoritos' : '⭐ Añadido a favoritos', wasFav ? 'bg-slate-400' : 'bg-yellow-400');
       },
+      onTogglePin: togglePin,
+      onCopy: copyText,
       onEdit: openEditor,
       onDelete: item => setPendingDelete(item),
     }),
-    [favorites, showToast, openEditor],
+    [favorites, showToast, togglePin, copyText, openEditor],
   );
 
   const save = async (draft: ItemDraft) => {
@@ -210,6 +358,48 @@ export default function App() {
 
     setForm(null);
     reload();
+  };
+
+  /** Captura rápida de 1 línea para vaciar la mente sin llenar formularios. */
+  const handleQuickCapture = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const raw = quickText.trim();
+    if (!raw || quickSaving) return;
+
+    const looksLikeUrl = /^https?:\/\/\S+$/i.test(raw) || /^[a-z0-9.-]+\.(com|app|dev|mx|org|io|net)(\/\S*)?$/i.test(raw);
+    const resolvedType: ItemType =
+      quickType !== 'auto' ? quickType : looksLikeUrl ? 'link' : 'note';
+
+    const draft = emptyDraft(resolvedType);
+
+    if (looksLikeUrl) {
+      const normalizedUrl = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+      const inferred = inferFromUrl(normalizedUrl);
+      const host = domainFromUrl(normalizedUrl);
+      draft.url = normalizedUrl;
+      draft.title = inferred.category ? `${inferred.category} — ${host}` : host || normalizedUrl;
+      draft.category = inferred.category ?? '';
+      draft.tags = inferred.tags ?? [];
+    } else if (resolvedType === 'note' || resolvedType === 'prompt') {
+      const firstLine = raw.split('\n')[0].trim();
+      draft.title = firstLine.length > 55 ? `${firstLine.slice(0, 55)}…` : firstLine;
+      draft.content = raw;
+      draft.category = resolvedType === 'note' ? 'Ideas' : 'Antigravity';
+    } else {
+      draft.title = raw;
+    }
+
+    setQuickSaving(true);
+    try {
+      await createItem(draft);
+      setQuickText('');
+      showToast(`⚡ Guardado en ${SECTION_TITLES[resolvedType]}`, 'bg-emerald-400');
+      reload();
+    } catch (err) {
+      showToast(errorMessage(err, 'No se pudo guardar'), 'bg-red-400');
+    } finally {
+      setQuickSaving(false);
+    }
   };
 
   const confirmDelete = async () => {
@@ -250,9 +440,34 @@ export default function App() {
     return base;
   }, [items]);
 
-  const tags = useMemo(() => collectTags(items), [items]);
+  const pinnedCount = useMemo(() => items.filter(i => i.pinned).length, [items]);
+  const unclassifiedCount = useMemo(() => items.filter(isUnclassified).length, [items]);
 
-  const isFiltering = query.trim() !== '' || typeFilter !== null || tagFilter !== null || favoritesOnly;
+  const tags = useMemo(() => collectTags(items), [items]);
+  const categories = useMemo(() => collectCategories(items, typeFilter ?? undefined), [items, typeFilter]);
+
+  const existingCategoriesByType = useMemo(() => {
+    const map: Record<ItemType, string[]> = {
+      webapp: [],
+      prompt: [],
+      link: [],
+      note: [],
+      person: [],
+    };
+    for (const t of ITEM_TYPES) {
+      map[t] = collectCategories(items, t).map(c => c.category);
+    }
+    return map;
+  }, [items]);
+
+  const isFiltering =
+    query.trim() !== '' ||
+    typeFilter !== null ||
+    categoryFilter !== null ||
+    tagFilter !== null ||
+    favoritesOnly ||
+    pinnedOnly ||
+    unclassifiedOnly;
 
   const visible = useMemo(() => {
     const favSet = new Set(favorites);
@@ -260,8 +475,11 @@ export default function App() {
       .filter(
         item =>
           (typeFilter === null || item.type === typeFilter) &&
-          (tagFilter === null || item.tags.includes(tagFilter)) &&
+          (categoryFilter === null || item.category.trim() === categoryFilter) &&
+          (tagFilter === null || item.tags.some(t => t.toLowerCase() === tagFilter.toLowerCase())) &&
           (!favoritesOnly || favSet.has(item.id)) &&
+          (!pinnedOnly || item.pinned) &&
+          (!unclassifiedOnly || isUnclassified(item)) &&
           matchesQuery(item, query),
       )
       .sort((a, b) => {
@@ -269,15 +487,33 @@ export default function App() {
         const aFav = favSet.has(a.id);
         const bFav = favSet.has(b.id);
         if (aFav !== bFav) return aFav ? -1 : 1;
+
+        if (sortMode === 'alpha') {
+          return a.title.localeCompare(b.title);
+        }
+        if (sortMode === 'updated') {
+          return (b.updated_at || '').localeCompare(a.updated_at || '') || b.id - a.id;
+        }
         return b.id - a.id;
       });
-  }, [items, favorites, typeFilter, tagFilter, favoritesOnly, query]);
+  }, [
+    items,
+    favorites,
+    typeFilter,
+    categoryFilter,
+    tagFilter,
+    favoritesOnly,
+    pinnedOnly,
+    unclassifiedOnly,
+    query,
+    sortMode,
+  ]);
 
   const groupOf = useCallback((type: ItemType) => visible.filter(item => item.type === type), [visible]);
 
   const renderCard = useCallback(
     (item: Item) => {
-      const shared = { key: item.id, item, handlers };
+      const shared = { key: item.id, item, handlers, compact: compactMode };
       switch (item.type) {
         case 'webapp':
           return <WebAppCard {...shared} onOpen={launch} onDetail={next => setDetail(next)} />;
@@ -293,7 +529,7 @@ export default function App() {
           return null;
       }
     },
-    [handlers, launch],
+    [handlers, launch, compactMode],
   );
 
   const renderSection = useCallback(
@@ -302,29 +538,30 @@ export default function App() {
       if (isFiltering && group.length === 0) return null;
 
       return (
-        <Section key={type} type={type} count={group.length} onAdd={startCreate}>
-          {group.length === 0 ? (
-            <button
-              onClick={() => startCreate(type)}
-              className="w-full text-left text-xs text-slate-500 py-3 px-3 border border-dashed border-primary/20 rounded-sm hover:border-primary/40 hover:text-slate-400 transition-colors flex items-center gap-2"
-            >
-              <span className="material-symbols-outlined text-[16px] text-primary/50">add</span>
-              {SECTION_EMPTY[type]}
-            </button>
-          ) : (
-            <div className={SECTION_GRIDS[type]}>{group.map(renderCard)}</div>
-          )}
-        </Section>
+        <Section
+          key={type}
+          type={type}
+          items={group}
+          selectedCategory={sectionCategory[type] ?? null}
+          onSelectCategory={cat => setSectionCategory(prev => ({ ...prev, [type]: cat }))}
+          groupByCategory={groupByCategory}
+          onAdd={startCreate}
+          renderCard={renderCard}
+        />
       );
     },
-    [groupOf, isFiltering, renderCard, startCreate],
+    [groupOf, isFiltering, sectionCategory, groupByCategory, startCreate, renderCard],
   );
 
   const clearFilters = () => {
     setQuery('');
     setTypeFilter(null);
+    setCategoryFilter(null);
     setTagFilter(null);
     setFavoritesOnly(false);
+    setPinnedOnly(false);
+    setUnclassifiedOnly(false);
+    setSectionCategory({});
   };
 
   const people = useMemo(() => items.filter(item => item.type === 'person'), [items]);
@@ -332,15 +569,19 @@ export default function App() {
   return (
     <div className="min-h-screen bg-surface-dark font-body-md text-slate-200 selection:bg-primary-container selection:text-surface-dark">
       <header className="fixed top-0 w-full z-40 flex justify-between items-center px-6 py-3 h-16 bg-surface-dark border-b border-primary/10">
-        <div className="flex items-center gap-8 min-w-0">
-          <h1 className="text-xl font-bold text-primary-container tracking-tighter font-headline-md shrink-0">
-            Corporate Hub
-          </h1>
+        <div className="flex items-center gap-6 min-w-0">
+          <button
+            onClick={clearFilters}
+            className="text-xl font-bold text-primary-container tracking-tighter font-headline-md shrink-0 hover:text-primary transition-colors text-left"
+          >
+            DI HUB
+          </button>
           <div className="hidden md:flex items-center bg-surface rounded px-3 py-1.5 border border-primary/10 w-96 transition-colors focus-within:border-primary/50">
             <span className="material-symbols-outlined text-slate-400 text-lg mr-2">search</span>
             <input
+              ref={searchInputRef}
               className="bg-transparent border-none text-sm w-full text-slate-200 placeholder-slate-500 outline-none"
-              placeholder="Buscar apps, prompts, notas, personas…"
+              placeholder="Buscar apps, prompts, notas, personas… (Ctrl+K)"
               type="text"
               value={query}
               onChange={e => setQuery(e.target.value)}
@@ -352,16 +593,49 @@ export default function App() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-4">
+
+        <div className="flex items-center gap-2.5">
+          {/* Controles rápidos de vista */}
+          <div className="hidden lg:flex items-center bg-surface border border-primary/10 rounded-sm p-0.5 text-xs">
+            <button
+              onClick={() => setGroupByCategory(v => !v)}
+              className={`px-2.5 py-1 rounded-sm flex items-center gap-1 transition-colors ${
+                groupByCategory ? 'bg-primary/15 text-primary font-semibold' : 'text-slate-400 hover:text-white'
+              }`}
+              title="Agrupar por carpetas dentro de cada sección"
+            >
+              <span className="material-symbols-outlined text-[15px]">folder</span>
+              Carpetas
+            </button>
+            <button
+              onClick={() => setCompactMode(v => !v)}
+              className={`px-2.5 py-1 rounded-sm flex items-center gap-1 transition-colors ${
+                compactMode ? 'bg-primary/15 text-primary font-semibold' : 'text-slate-400 hover:text-white'
+              }`}
+              title="Alternar vista compacta para ver más items sin hacer scroll"
+            >
+              <span className="material-symbols-outlined text-[15px]">view_compact</span>
+              Compacto
+            </button>
+          </div>
+
+          <select
+            value={sortMode}
+            onChange={e => setSortMode(e.target.value as SortMode)}
+            aria-label="Ordenar aportes"
+            className="hidden sm:block bg-surface border border-primary/10 rounded-sm px-2.5 py-1.5 text-xs text-slate-300 focus:border-primary focus:outline-none"
+          >
+            <option value="recent">Orden: Recientes</option>
+            <option value="updated">Orden: Editados</option>
+            <option value="alpha">Orden: A–Z</option>
+          </select>
+
           <button
-            onClick={() => startCreate(typeFilter ?? 'webapp')}
-            className="bg-primary-container text-surface-dark font-bold py-1.5 px-4 rounded transition-all hover:bg-primary text-sm flex items-center gap-2 whitespace-nowrap"
+            onClick={() => startCreate(typeFilter ?? 'note')}
+            className="bg-primary-container text-surface-dark font-bold py-1.5 px-4 rounded transition-all hover:bg-primary text-sm flex items-center gap-1.5 whitespace-nowrap"
           >
             <span className="material-symbols-outlined text-sm">add</span> Nuevo Aporte
           </button>
-          <div className="h-8 w-8 rounded-full overflow-hidden border border-primary/20 bg-surface grid place-items-center shrink-0">
-            <span className="material-symbols-outlined text-slate-400">person</span>
-          </div>
         </div>
       </header>
 
@@ -372,38 +646,112 @@ export default function App() {
         favoritesOnly={favoritesOnly}
         onToggleFavoritesOnly={() => setFavoritesOnly(v => !v)}
         favoritesCount={favorites.length}
+        pinnedOnly={pinnedOnly}
+        onTogglePinnedOnly={() => setPinnedOnly(v => !v)}
+        pinnedCount={pinnedCount}
+        unclassifiedOnly={unclassifiedOnly}
+        onToggleUnclassifiedOnly={() => setUnclassifiedOnly(v => !v)}
+        unclassifiedCount={unclassifiedCount}
+        categories={categories}
+        activeCategory={categoryFilter}
+        onSelectCategory={setCategoryFilter}
         tags={tags}
         activeTag={tagFilter}
         onSelectTag={setTagFilter}
       />
 
-      <main className="md:ml-64 pt-24 pb-12 min-h-screen">
-        <div className="max-w-[1440px] mx-auto px-8">
-          <div className="mb-8">
-            <h3 className="text-slate-500 text-xs uppercase tracking-[0.2em] mb-1">Misión Control</h3>
-            <h2 className="text-3xl font-headline-xl text-white">Ecosistema de Herramientas</h2>
-            <div className="h-1 w-12 bg-primary mt-4"></div>
+      <main className="md:ml-64 pt-22 pb-12 min-h-screen">
+        <div className="max-w-[1440px] mx-auto px-6 md:px-8">
+          {/* Header + Barra de Captura Rápida ("Brain Dump") */}
+          <div className="mb-6 flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+            <div>
+              <h3 className="text-slate-500 text-xs uppercase tracking-[0.2em] mb-1">Segundo Cerebro · Diseño Industrial</h3>
+              <h2 className="text-2xl md:text-3xl font-headline-xl text-white">Ecosistema de Herramientas</h2>
+              <div className="h-1 w-12 bg-primary mt-3"></div>
+            </div>
+
+            {/* Captura rápida en 1 segundo sin llenar campos */}
+            <form
+              onSubmit={handleQuickCapture}
+              className="flex-1 max-w-2xl bg-surface border border-primary/20 rounded-sm p-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 focus-within:border-primary/60 transition-colors"
+            >
+              <div className="flex items-center gap-2 flex-1 min-w-0 px-1">
+                <span className="material-symbols-outlined text-primary text-lg shrink-0">bolt</span>
+                <input
+                  type="text"
+                  value={quickText}
+                  onChange={e => setQuickText(e.target.value)}
+                  placeholder="Sácalo de tu mente: pega un link o escribe una nota rápida y da Enter…"
+                  className="bg-transparent border-none text-sm w-full text-white placeholder-slate-500 outline-none"
+                />
+              </div>
+              <div className="flex items-center gap-1.5 justify-end shrink-0">
+                <select
+                  value={quickType}
+                  onChange={e => setQuickType(e.target.value as ItemType | 'auto')}
+                  aria-label="Tipo de captura rápida"
+                  className="bg-surface-dark border border-primary/15 text-[11px] text-slate-300 rounded-sm px-2 py-1.5 focus:outline-none focus:border-primary"
+                >
+                  <option value="auto">✨ Auto (Nota / Link)</option>
+                  <option value="note">📝 Nota rápida</option>
+                  <option value="link">🔗 Link / Doc</option>
+                  <option value="webapp">🚀 Web App</option>
+                  <option value="prompt">🤖 Prompt</option>
+                </select>
+                <button
+                  type="submit"
+                  disabled={!quickText.trim() || quickSaving}
+                  className="bg-primary text-surface-dark font-bold text-xs px-3 py-1.5 rounded-sm hover:bg-white transition-colors disabled:opacity-40"
+                >
+                  {quickSaving ? '…' : 'Guardar'}
+                </button>
+              </div>
+            </form>
           </div>
 
           {isFiltering && (
-            <div className="mb-6 flex items-center gap-2 flex-wrap text-xs">
-              <span className="text-slate-500">
-                {visible.length} {visible.length === 1 ? 'resultado' : 'resultados'}
+            <div className="mb-6 flex items-center gap-2 flex-wrap text-xs bg-surface/60 border border-primary/15 px-3 py-2 rounded-sm">
+              <span className="text-slate-400 font-medium">
+                Mostrando {visible.length} {visible.length === 1 ? 'aporte' : 'aportes'}:
               </span>
-              {query && <span className="bg-surface border border-primary/20 px-2 py-1 rounded-sm text-primary">“{query}”</span>}
+              {query && (
+                <span className="bg-surface-dark border border-primary/20 px-2 py-0.5 rounded-sm text-primary">
+                  “{query}”
+                </span>
+              )}
               {typeFilter && (
-                <span className="bg-surface border border-primary/20 px-2 py-1 rounded-sm text-primary">
+                <span className="bg-surface-dark border border-primary/20 px-2 py-0.5 rounded-sm text-primary">
                   {SECTION_TITLES[typeFilter]}
                 </span>
               )}
+              {categoryFilter && (
+                <span className="bg-surface-dark border border-primary/20 px-2 py-0.5 rounded-sm text-primary flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[13px]">folder</span>
+                  {categoryFilter}
+                </span>
+              )}
               {tagFilter && (
-                <span className="bg-surface border border-primary/20 px-2 py-1 rounded-sm text-primary">#{tagFilter}</span>
+                <span className="bg-surface-dark border border-primary/20 px-2 py-0.5 rounded-sm text-primary">
+                  #{tagFilter}
+                </span>
+              )}
+              {pinnedOnly && (
+                <span className="bg-surface-dark border border-primary/30 px-2 py-0.5 rounded-sm text-primary">
+                  📌 Fijados
+                </span>
               )}
               {favoritesOnly && (
-                <span className="bg-surface border border-yellow-400/30 px-2 py-1 rounded-sm text-yellow-400">Favoritos</span>
+                <span className="bg-surface-dark border border-yellow-400/30 px-2 py-0.5 rounded-sm text-yellow-400">
+                  ⭐ Favoritos
+                </span>
               )}
-              <button onClick={clearFilters} className="text-slate-500 hover:text-white underline">
-                Limpiar
+              {unclassifiedOnly && (
+                <span className="bg-surface-dark border border-amber-400/30 px-2 py-0.5 rounded-sm text-amber-300">
+                  Sin carpeta / tag
+                </span>
+              )}
+              <button onClick={clearFilters} className="text-slate-400 hover:text-white underline ml-auto">
+                Ver todo de nuevo
               </button>
             </div>
           )}
@@ -430,13 +778,19 @@ export default function App() {
           ) : items.length === 0 ? (
             <div className="p-10 border border-dashed border-primary/20 rounded text-center text-slate-500">
               <span className="material-symbols-outlined text-4xl mb-3 opacity-50">database</span>
-              <p>La base de datos está vacía. ¡Agrega tu primer aporte!</p>
+              <p>La base de datos está vacía. ¡Agrega tu primer aporte arriba!</p>
             </div>
           ) : isFiltering ? (
             visible.length === 0 ? (
               <div className="p-10 border border-dashed border-primary/20 rounded text-center text-slate-500">
                 <span className="material-symbols-outlined text-4xl mb-3 opacity-50">search_off</span>
                 <p>Nada coincide con ese filtro.</p>
+                <button
+                  onClick={clearFilters}
+                  className="mt-3 text-xs text-primary hover:underline"
+                >
+                  Limpiar filtros
+                </button>
               </div>
             ) : (
               <div className="space-y-6">{ITEM_TYPES.map(renderSection)}</div>
@@ -452,8 +806,8 @@ export default function App() {
                 </div>
                 <div className="xl:col-span-5 space-y-6">
                   {renderSection('prompt')}
-                  {renderSection('person')}
                   {renderSection('link')}
+                  {renderSection('person')}
                 </div>
               </div>
             </>
@@ -466,6 +820,8 @@ export default function App() {
           key={form.editingId ?? 'new'}
           initial={form.initial}
           editingId={form.editingId}
+          existingCategories={existingCategoriesByType}
+          existingTags={tags.map(t => t.tag)}
           onClose={() => setForm(null)}
           onSave={save}
         />
@@ -510,3 +866,4 @@ export default function App() {
     </div>
   );
 }
+

@@ -236,13 +236,13 @@ export default function DetailModal({ item, onClose, onEdit, onCopy }: Props) {
           )}
         </Field>
 
-        <div className="bg-[#04080c] border border-primary/20 p-4 rounded-sm">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="material-symbols-outlined text-primary text-sm">key</span>
-            <span className="text-xs text-primary uppercase tracking-wider font-bold">Cómo se accede</span>
-          </div>
+        {hasAccessInfo ? (
+          <div className="bg-[#04080c] border border-primary/20 p-4 rounded-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="material-symbols-outlined text-primary text-sm">key</span>
+              <span className="text-xs text-primary uppercase tracking-wider font-bold">Cómo se accede</span>
+            </div>
 
-          {hasAccessInfo ? (
             <div className="flex flex-col gap-4">
               {item.meta.loginUser && (
                 <Field label="Usuario / Email">
@@ -277,19 +277,23 @@ export default function DetailModal({ item, onClose, onEdit, onCopy }: Props) {
                 </Field>
               )}
             </div>
-          ) : (
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Sin datos de acceso. Edita este aporte para registrar con qué usuario se entra y en qué gestor está
-              guardada la contraseña.
-            </p>
-          )}
 
-          <p className="text-[10px] text-slate-600 leading-relaxed mt-4 pt-3 border-t border-white/5">
-            Este hub guarda <strong className="text-slate-500">referencias</strong>, no contraseñas. El secreto se queda
-            en el gestor.
-          </p>
-        </div>
+            <p className="text-[10px] text-slate-600 leading-relaxed mt-4 pt-3 border-t border-white/5">
+              Este hub guarda <strong className="text-slate-500">referencias</strong>, no contraseñas. El secreto se queda
+              en el gestor.
+            </p>
+          </div>
+        ) : item.type === 'webapp' ? (
+          <button
+            onClick={() => onEdit(item)}
+            className="text-left text-xs text-slate-500 hover:text-primary border border-dashed border-primary/20 hover:border-primary/40 p-3 rounded-sm transition-colors flex items-center gap-2"
+          >
+            <span className="material-symbols-outlined text-sm">key</span>
+            Registrar con qué usuario se entra o en qué gestor está la contraseña…
+          </button>
+        ) : null}
       </div>
     </Modal>
   );
 }
+
